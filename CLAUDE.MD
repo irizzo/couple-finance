@@ -25,7 +25,7 @@ The Firestore data layer is built. Entities live in four root collections — `a
 | --- | --- |
 | `src/database/db.ts` | Exports the Firestore handle. **Admin SDK only** — never the client `firebase` package. |
 | `src/database/*.actions.ts` | One file per entity, each marked `"use server"`. The only public API. |
-| `src/database/entities.ts` | Shared CRUD behind accounts/saldos/categories. Account and Saldo are structurally identical, so their logic exists once. |
+| `src/database/entities.ts` | Shared CRUD behind accounts/saldos/categories. Two shapes: `createNamedEntity`/`updateNamedEntity` (name only — categories) and `createBalanceEntity`/`updateBalanceEntity` (name + two balances — accounts and saldos, which are structurally identical, so their logic exists once). Also `assertActive(collection, id, label)`, the shared exists-and-not-archived guard. |
 | `src/database/validators.ts` | Hand-rolled validation primitives, no dependency. |
 | `src/database/result.ts` | The `ActionResult<T>` envelope. |
 | `src/database/collections.ts` | Collection names and the `withId` snapshot mapper. |
@@ -57,8 +57,9 @@ helpers have to stay in the non-action modules above.
 * **No composite indexes.** The selective `date` range runs in Firestore
   (ISO `YYYY-MM-DD` strings sort lexicographically); `archived` and id-equality
   filters are applied in memory. Personal-scale data, zero index setup.
-* **Categories belong to a saldo** via `saldoId`, and a transaction's category
-  must belong to its saldo — enforced on write.
+* **Saldo and category are independent tags.** A transaction carries both, but
+  any category may pair with any saldo — neither nests inside the other. Each
+  reference is validated only for existence and active status on write.
 * `realAmount` may never exceed `totalAmount`; money is rounded to 2 decimals on
   every balance write.
 

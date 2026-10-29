@@ -117,10 +117,13 @@ async function readAll(
 }
 
 /**
- * Verifies the account, saldo and category a transaction posts to. `enforceActive`
- * lists the ids the caller is newly pointing at: an archived target may never
- * receive a *new* posting, but an existing transaction must stay editable even
- * after its account has been archived.
+ * Verifies the account, saldo and category a transaction posts to. Saldo and
+ * category are independent dimensions, so each is checked only for existence
+ * and active status — any category may pair with any saldo.
+ *
+ * `enforceActive` lists the ids the caller is newly pointing at: an archived
+ * target may never receive a *new* posting, but an existing transaction must
+ * stay editable even after its account has been archived.
  */
 function checkTargets(
 	snaps: Snapshots,
@@ -144,14 +147,6 @@ function checkTargets(
 		}
 	}
 
-	const category = withId<Category>(
-		snaps.get(
-			categoryRef(txn.categoryId).path,
-		) as DocumentSnapshot<DocumentData>,
-	);
-	if (category.saldoId !== txn.saldoId) {
-		return `Category "${category.name}" belongs to saldo "${category.saldoId}", not "${txn.saldoId}"`;
-	}
 	return null;
 }
 

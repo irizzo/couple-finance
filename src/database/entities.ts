@@ -45,6 +45,29 @@ export function notFound<T>(label: string, id: string): ActionResult<T> {
 	return fail<T>(`${label} "${id}" was not found`);
 }
 
+/**
+ * Guards a reference before anything points at it: the target has to exist and
+ * still be active. Returns the problem as a message, or `null` when the
+ * reference is good — the shape callers fold into their own `fail(...)`.
+ *
+ * Parameterized by collection because budgets need exactly this check against
+ * saldos *and* categories.
+ */
+export async function assertActive(
+	collection: string,
+	id: string,
+	label: string,
+): Promise<string | null> {
+	const snap = await ref(collection).doc(id).get();
+	if (!snap.exists) {
+		return `${label} "${id}" was not found`;
+	}
+	if (withId<NamedEntity>(snap).archived) {
+		return `${label} "${id}" is archived`;
+	}
+	return null;
+}
+
 export async function getEntity<T extends { id: string }>(
 	collection: string,
 	id: string,
@@ -103,6 +126,58 @@ export async function setArchived<T extends NamedEntity>(
 	} catch (cause) {
 		const verb = archived ? "archive" : "restore";
 		return failFrom<T>(`Could not ${verb} the ${label.toLowerCase()}`, cause);
+	}
+}
+
+export async function createNamedEntity<T extends NamedEntity>(
+	collection: string,
+	input: { name: string },
+	label: string,
+): Promise<ActionResult<T>> {
+	const fieldErrors = collect({ name: nonEmptyString(input?.name) });
+	if (fieldErrors) {
+		return fail<T>(`Invalid ${label.toLowerCase()}`, fieldErrors);
+	}
+
+	try {
+		const docRef = ref(collection).doc();
+		// `archived: false` is mandatory, not a default: a
+		// `where("archived", "==", false)` query silently skips documents that are
+		// missing the field entirely.
+		const data = { name: input.name.trim(), archived: false };
+		await docRef.set(data);
+		return ok({ id: docRef.id, ...data } as T);
+	} catch (cause) {
+		return failFrom<T>(`Could not create the ${label.toLowerCase()}`, cause);
+	}
+}
+
+export async function updateNamedEntity<T extends NamedEntity>(
+	collection: string,
+	id: string,
+	input: { name?: string },
+	label: string,
+): Promise<ActionResult<T>> {
+	if (input?.name === undefined) {
+		return fail<T>("Nothing to update");
+	}
+	const fieldErrors = collect({ name: nonEmptyString(input.name) });
+	if (fieldErrors) {
+		return fail<T>(`Invalid ${label.toLowerCase()}`, fieldErrors);
+	}
+
+	try {
+		const docRef = ref(collection).doc(id);
+		const snap = await docRef.get();
+		if (!snap.exists) {
+			return notFound<T>(label, id);
+		}
+
+		const patch = { name: input.name.trim() };
+		await docRef.update(patch);
+		return ok({ ...withId<T>(snap), ...patch });
+	} catch (cause) {
+		return failFrom<T>(`Could not update the ${label.toLowerCase()}`, cause);
 	}
 }
 

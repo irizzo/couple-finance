@@ -7,8 +7,8 @@ export interface Transaction {
 	id: string;
 	date: string; // ISO "YYYY-MM-DD"
 	description: string;
-	totalAmount: number; 
-	realAmount: number; 
+	totalAmount: number;
+	realAmount: number;
 	accountId: string;
 	saldoId: string;
 	categoryId: string;
@@ -20,7 +20,7 @@ export interface Account {
 	name: string;
 	initialAmount: number;
 	totalBalance: number;
-	realBalance: number; 
+	realBalance: number;
 	archived: boolean;
 }
 
@@ -29,14 +29,17 @@ export interface Saldo {
 	name: string;
 	initialAmount: number;
 	totalBalance: number;
-	realBalance: number; 
+	realBalance: number;
 	archived: boolean;
 }
 
+/**
+ * Independent of Saldo: a transaction carries both a `saldoId` and a
+ * `categoryId`, but any category may pair with any saldo.
+ */
 export interface Category {
 	id: string;
 	name: string;
-	saldoId: string;
 	archived: boolean;
 }
 
@@ -55,7 +58,7 @@ export type CreateSaldoInput = Omit<
 export type UpdateSaldoInput = Partial<Pick<Saldo, "name" | "initialAmount">>;
 
 export type CreateCategoryInput = Omit<Category, "id" | "archived">;
-export type UpdateCategoryInput = Partial<Pick<Category, "name" | "saldoId">>;
+export type UpdateCategoryInput = Partial<Pick<Category, "name">>;
 
 export type CreateTransactionInput = Omit<Transaction, "id">;
 export type UpdateTransactionInput = Partial<CreateTransactionInput>;
