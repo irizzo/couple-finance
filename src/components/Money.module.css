@@ -1,0 +1,25 @@
+.money {
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.positive {
+	color: var(--positive);
+}
+
+.negative {
+	color: var(--negative);
+}
+
+.muted {
+	color: var(--muted);
+}
+
+/* The secondary `totalAmount` beneath a real figure: present, but it should
+   never compete with the number that actually drives the budget. */
+.secondary {
+	display: block;
+	font-size: 0.75rem;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}

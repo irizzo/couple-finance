@@ -6,7 +6,7 @@ when the phase lands. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the hi
 | Phase | Status |
 | --- | --- |
 | 1 — Decouple Category from Saldo | **Done** |
-| 2 — Foundations | Not started |
+| 2 — Foundations | **Done** |
 | 3 — Settings CRUD | Not started |
 | 4 — Monthly transactions view | Not started |
 | 5 — Transaction create / edit / duplicate / delete | Not started |
@@ -77,7 +77,7 @@ union cast.
 - The `entities.ts` row of the file table now describes both shapes it holds
   (named vs. balance entities) and `assertActive`.
 
-### Verification
+### How Phase 1 was verified
 
 ```text
 npx tsc --noEmit    clean
@@ -115,7 +115,7 @@ talk to real Firestore with no extra tooling — Node resolves `firebase-admin` 
 walking up from the script's own directory, so the scratchpad won't work but the
 project root will. That covers direct-Firestore checks for free.
 
-### Carried forward
+### Left open after Phase 1
 
 - **The data layer still can't be exercised outside the app.** The `.mjs` trick
   above reaches Firestore directly, but not through the `"use server"` action
@@ -126,3 +126,169 @@ project root will. That covers direct-Firestore checks for free.
 - **The database being empty means Phase 3 is the first usable screen.** There is
   no seed data to render, so the settings CRUD has to come before the monthly
   view can show anything — which is the order PLAN.md already has.
+
+---
+
+## Phase 2 — Foundations
+
+The app shell, a design system, and the three support layers every later phase
+builds on. No features: the three feature routes exist so navigation resolves,
+but each renders a placeholder naming the phase that fills it in.
+
+### Design system — [src/app/globals.css](src/app/globals.css)
+
+Extended the existing `:root` / `prefers-color-scheme` pair rather than replacing
+it, so the dark-mode scaffolding that was already there keeps working. Added:
+
+- **Surfaces** — `--surface`, `--surface-raised`, `--border`, `--border-strong`,
+  `--muted`.
+- **Accent** — `--accent`, `--accent-soft`, `--on-accent`.
+- **Money tone** — `--positive`, `--negative`, `--warning`. The warning token is
+  the "close to the limit" band Phase 6's budget bars need.
+- **Scale** — `--space-1` … `--space-6`, `--radius`, `--radius-sm`,
+  `--content-width`.
+- **Base control styles** for `input` / `select` / `textarea`, a shared
+  `:focus-visible` ring, and an `[aria-invalid="true"]` border so an invalid
+  field looks invalid without each form restating it.
+- `font-variant-numeric: tabular-nums` on money. Figures in a column have to
+  align on the decimal point, or comparing a budget to its actual means counting
+  digits.
+
+Every token is defined in **both** the light and dark block.
+
+### Pure helpers — `src/lib/`
+
+**[src/lib/month.ts](src/lib/month.ts)** — `isMonth`, `currentMonth`, `today`,
+`resolveMonth`, `shiftMonth`, `monthBounds`, `formatMonthLabel`.
+
+Two time bases, deliberately:
+
+- "What month is it *now*" reads **local** date parts. At 22:00 on 31 October in
+  Brazil (UTC−3) the UTC date is already 1 November, so `toISOString()` would
+  drop the user into the wrong month.
+- Arithmetic on an already-known month pins to **UTC** via `Date.UTC`, where no
+  timezone or DST shift can roll a boundary over. `monthBounds` gets the last day
+  from day 0 of the following month, which handles February and leap years for
+  free.
+
+Two additions beyond PLAN.md's four functions: `resolveMonth` (every page needs
+to coerce an untrusted `?month=` value, and a hand-edited URL should fall back,
+not error) and `today` (Phase 5's duplicate-with-today's-date, kept here so the
+local-timezone reasoning lives in one file).
+
+**[src/lib/money.ts](src/lib/money.ts)** — `formatCurrency` and `parseAmount`.
+Rounding delegates to `round2` from
+[src/database/validators.ts](src/database/validators.ts); there stays one
+definition of "money has two decimal places". `parseAmount` returns `NaN` rather
+than `0` for unparseable input, so the data layer's `finiteNumber` validator
+rejects it and the field gets a real message — silently saving a R$0 transaction
+would be worse than refusing it. It also accepts a pasted pt-BR `"1.234,56"`,
+where a comma means the dots are thousands separators.
+
+### Form plumbing — [src/app/_actions/form-state.ts](src/app/_actions/form-state.ts)
+
+`FormState`, `IDLE_FORM_STATE`, `formValues(formData)` and `fromResult(result,
+submitted)`. Not a `"use server"` module on purpose — it exports a type and sync
+helpers, which a server-action module may not do. The adapters added in Phase 3
+carry the directive; this holds the shape they all return.
+
+No validation here. `fieldErrors` already arrives complete from the actions
+(every invalid field at once, by design), so this is purely shape translation.
+`fromResult` echoes the submitted values back on failure so a rejected form
+re-renders with the user's input intact, and drops them on success so the form
+resets.
+
+### Components — `src/components/`
+
+| Component | Kind | Notes |
+| --- | --- | --- |
+| `Field` | server | Label + control + error/hint, with `${name}-error` / `${name}-hint` ids. The caller owns the input: wiring it from here would mean cloning children, which breaks the moment a field holds a radio group or a paired input. |
+| `SubmitButton` | client | `useFormStatus` pending state. Separate component because the hook only reports from a child of the `<form>`, never from whatever renders the form. |
+| `ConfirmSubmit` | client | `window.confirm` then `preventDefault` on cancel — for transaction delete and archive. |
+| `Money` | server | `formatCurrency` plus a tone. `signed` colours by sign for balances and nets; `plain` stays foreground, because painting every expense red makes the whole ledger red. Optional `secondary` renders `totalAmount` beneath a real figure. |
+| `MonthNav` | **server** | Prev / next / "mês atual". |
+| `NavLink` | client | Top nav with `aria-current="page"`; prefix-matched so `/settings/accounts` still highlights Configurações. |
+| `Placeholder` | server | Temporary — marks a route whose content lands later. Every use is deleted by the phase it names. |
+
+Two deliberate departures from PLAN.md:
+
+- **`MonthNav` is a Server Component**, not the sketched client component driving
+  `useRouter`. All three targets are known at render time, so plain `<Link>`s
+  give prefetching and working middle-click and ship no JavaScript.
+- **It takes a `params` prop** to carry other query parameters across a month
+  change. Without that, Phase 4's filters would silently reset every time the
+  user stepped to the next month.
+
+Shared button styling lives in one `controls.module.css` used by both button
+components; page furniture (title row, section block, error banner, card grid)
+lives in `src/app/pages.module.css` so the Phase 3-6 pages don't each reinvent a
+header.
+
+### Shell and routes
+
+- **[src/app/layout.tsx](src/app/layout.tsx)** — real metadata, `lang="pt-BR"`,
+  and a persistent header: brand + Transações / Orçamento / Configurações. Kept
+  the existing Geist font setup and wired `--font-geist-sans` into `body`, which
+  the boilerplate declared but never applied.
+- **[src/app/page.tsx](src/app/page.tsx)** — now just
+  `redirect(/transactions?month=<current>)`. Marked `force-dynamic`: it reads the
+  clock, and a prerendered redirect would pin the app to whatever month it was
+  built in.
+- `src/app/page.module.css` **deleted** — 142 lines of create-next-app landing
+  styles with nothing left importing them.
+- **Stub routes** at `/transactions`, `/budget`, `/settings`, each awaiting
+  `searchParams` (a Promise in Next 16) and resolving `?month=`. The settings
+  sub-routes are not stubbed; nav points at `/settings` only until Phase 3.
+
+### Tooling — [biome.json](biome.json)
+
+Added an `overrides` entry turning off `noDefaultExport` and
+`useComponentExportOnlyModules` for `src/app/**`. Next *requires* a default
+export from every page and layout, and requires `metadata` / `dynamic` to be
+exported from the same module — so those two rules fire on correct code, and
+would have fired once per page for the rest of the project.
+
+Also fixed a pre-existing unsorted-import error in
+[src/database/firebase.config.js](src/database/firebase.config.js), the only
+lint error in `src/`.
+
+### How Phase 2 was verified
+
+```text
+npx tsc --noEmit         clean
+npx biome check src/     clean — only 4 pre-existing style warnings remain
+                         (noEnum + useNamingConvention on TransactionType,
+                         noDefaultExport on db.ts), all in untouched code
+npm run build            compiled; routes ƒ / , ƒ /budget, ○ /settings, ƒ /transactions
+```
+
+`month.ts` was unit-checked directly with `node --experimental-strip-types` —
+**16 cases, all passing**: year rollover in both directions (`2026-01` − 1 →
+`2025-12`, `2026-12` + 1 → `2027-01`), multi-month shifts, 31/30/28/29-day month
+bounds including leap February 2028, the pt-BR capitalized label, and rejection
+of `2026-13` / `2026-00` / a full date.
+
+Live smoke test against `npm run dev`:
+
+| Check | Result |
+| --- | --- |
+| `GET /` | `307 → /transactions?month=2026-10` (the real current month) |
+| `?month=2026-03` | renders "Março de 2026" |
+| `?month=not-a-month` | falls back to "Outubro de 2026" instead of erroring |
+| December prev/next links | `2026-11` and `2027-01` — rollover correct in the rendered page |
+| Nav active state | `aria-current="page"` on Transações only |
+| `/budget`, `/settings` | resolve and render their placeholders |
+
+### Left open after Phase 2
+
+- **`money.ts` is not unit-checked.** The `--experimental-strip-types` trick that
+  covered `month.ts` can't resolve the `@/*` alias, and `money.ts` imports
+  `round2` through it. It passes `tsc` and gets exercised by Phase 3's first real
+  form. This is the same gap the `tsx` question from Phase 1 would close.
+- **`npm run lint` is still red on four files** — `.claude/settings.local.json`,
+  `next.config.ts`, `package.json`, `tsconfig.json` — all 2-space-indented
+  against Biome's `indentStyle: "tab"`. None was touched by this work, and
+  reformatting the project's config files is a cosmetic repo-wide decision, so
+  it is left for the owner to call. Everything under `src/` is clean.
+- **`Placeholder` and its three stub bodies are scaffolding**, due for deletion
+  in Phases 3, 4 and 6 respectively.

@@ -1,0 +1,63 @@
+/* Page furniture shared by every route: the title row, section blocks, and the
+   error banner an action failure renders into. Kept in one module so the pages
+   added in Phases 3-6 don't each reinvent a header. */
+
+.page {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.headerActions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.lead {
+	color: var(--muted);
+	font-size: 0.9375rem;
+	max-width: 60ch;
+}
+
+.section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-5);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.sectionTitle {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+/* Top-level `FormState.error` / failed `ActionResult.error`. Never swallow one:
+   a blank page is worse than a visible message. */
+.errorBanner {
+	padding: var(--space-3) var(--space-4);
+	border: 1px solid var(--negative);
+	border-radius: var(--radius-sm);
+	background: var(--surface-raised);
+	color: var(--negative);
+	font-size: 0.875rem;
+}
+
+.cardGrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: var(--space-3);
+}

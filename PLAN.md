@@ -1,6 +1,7 @@
 # Implementation Plan — Couple Finance UI & Budget Planning
 
 > Approved 2026-10-29. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the execution track — tick phases off here as they land.
+> Implement this plan, step by step. After each step is completed, stop and document what has been done updating this file, CLAUDE.MD and IMPLEMENTATION.md.
 
 ## Context
 
@@ -55,9 +56,27 @@ The existing [src/database/](src/database/) layer stays a pure, route-unaware da
 
 ---
 
-## Phase 1 — Decouple Category from Saldo
+## Progress
+
+| Phase | Status |
+| --- | --- |
+| 1 — Decouple Category from Saldo | ✅ Done |
+| 2 — Foundations | ✅ Done |
+| 3 — Settings CRUD | ⬜ Next |
+| 4 — Monthly transactions view | ⬜ |
+| 5 — Transaction create / edit / duplicate / delete | ⬜ |
+| 6 — Budget planning | ⬜ |
+| 7 — Polish and documentation | ⬜ |
+
+What each completed phase actually produced, and where it deviated from the text below, is recorded in [IMPLEMENTATION.MD](IMPLEMENTATION.MD).
+
+---
+
+## Phase 1 — Decouple Category from Saldo ✅
 
 Pure data-layer refactor, no UI. Doing it first means nothing downstream is ever written against the old shape.
+
+> **Done.** Landed as written. The one planned step that turned out unnecessary: there was no orphaned `saldoId` data to migrate — the Firestore database is entirely empty.
 
 ### What changes
 
@@ -103,17 +122,19 @@ Three things the earlier design needed are now gone before they were ever built:
 
 ---
 
-## Phase 2 — Foundations
+## Phase 2 — Foundations ✅
 
 **Goal:** an app shell with navigation and a design system; no features yet.
+
+> **Done.** Three deviations, all recorded in IMPLEMENTATION.MD: `MonthNav` shipped as a Server Component (plain `<Link>`s, no JS) with a `params` prop so Phase 4's filters survive a month change; `formatBRL` is named `formatCurrency` (Biome's `strictCase` rejects the acronym); and `month.ts` gained `resolveMonth` + `today` beyond the four functions listed below. `biome.json` also gained an `src/app/**` override, since Next requires the default exports that `noDefaultExport` flags.
 
 1. **[src/app/globals.css](src/app/globals.css)** — extend the existing `:root` / `prefers-color-scheme` blocks with tokens: `--surface`, `--surface-raised`, `--border`, `--muted`, `--accent`, `--positive`, `--negative`, `--warning`, a spacing scale (`--space-1`…`--space-6`), and a tabular-number treatment for money columns. The dark-mode scaffolding is already there — add new tokens to both blocks.
 2. **[src/app/layout.tsx](src/app/layout.tsx)** — real `metadata` (title "Couple Finance", `lang="pt-BR"`) and a persistent nav: Transações · Orçamento · Configurações. Keep the existing Geist font setup.
 3. **[src/app/page.tsx](src/app/page.tsx)** — replace the boilerplate with `redirect(\`/transactions?month=${currentMonth()}\`)`. Strip the now-unused rules from [src/app/page.module.css](src/app/page.module.css).
-4. **`src/lib/money.ts`** — `formatBRL(value)` via `Intl.NumberFormat("pt-BR", {style:"currency", currency:"BRL"})`, and `parseAmount(formValue)` for `FormData` → number. Reuse `round2` from [src/database/validators.ts](src/database/validators.ts) rather than re-rounding.
+4. **`src/lib/money.ts`** — `formatCurrency(value)` via `Intl.NumberFormat("pt-BR", {style:"currency", currency:"BRL"})`, and `parseAmount(formValue)` for `FormData` → number. Reuse `round2` from [src/database/validators.ts](src/database/validators.ts) rather than re-rounding.
 5. **`src/lib/month.ts`** — `currentMonth(): "YYYY-MM"`, `shiftMonth(month, delta)`, `monthBounds(month): {from, to}` (last day via `Date.UTC(y, m, 0)`), `formatMonthLabel(month)` in pt-BR. `monthBounds` is what feeds `listTransactions({from, to})`.
 6. **`src/app/_actions/form-state.ts`** — a `FormState` type (`{status: "idle"|"ok"|"error"; error?: string; fieldErrors?: Record<string,string>; values?: Record<string,string>}`) and `fromResult(result, submitted)` mapping an `ActionResult<T>` onto it. `fieldErrors` already arrives complete from the data layer ([src/database/result.ts](src/database/result.ts)) — this is shape translation, not new validation. **Echo submitted values back** so a failed form re-renders with the user's input intact.
-7. **`src/components/`** primitives — `Field` (label + input + error), `SubmitButton` (client, `useFormStatus` pending state), `ConfirmSubmit` (client, `window.confirm` before a destructive submit), `MonthNav` (client, prev/next/today links rewriting `?month=`), `Money` (server, `formatBRL` + positive/negative token).
+7. **`src/components/`** primitives — `Field` (label + input + error), `SubmitButton` (client, `useFormStatus` pending state), `ConfirmSubmit` (client, `window.confirm` before a destructive submit), `MonthNav` (client, prev/next/today links rewriting `?month=`), `Money` (server, `formatCurrency` + positive/negative token).
 
 **Done when:** `npm run dev` serves a styled shell, `/` redirects to the current month, nav links resolve (pages may be stubs).
 

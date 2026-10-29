@@ -1,0 +1,56 @@
+/* Shared button surface. Two components use these (SubmitButton,
+   ConfirmSubmit) and the pages layer them onto plain links, so the rules live
+   in one module rather than being restated per component. */
+
+.button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface-raised);
+	color: var(--foreground);
+	font-size: 0.875rem;
+	font-weight: 500;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.button:hover:not(:disabled) {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.button:disabled {
+	opacity: 0.55;
+	cursor: progress;
+}
+
+.primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--on-accent);
+}
+
+.primary:hover:not(:disabled) {
+	color: var(--on-accent);
+	filter: brightness(1.08);
+}
+
+.danger {
+	color: var(--negative);
+	border-color: var(--border);
+}
+
+.danger:hover:not(:disabled) {
+	border-color: var(--negative);
+	color: var(--negative);
+}
+
+/* Row-level actions inside a dense table. */
+.compact {
+	padding: var(--space-1) var(--space-2);
+	font-size: 0.8125rem;
+}

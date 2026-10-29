@@ -1,49 +1,150 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+	--background: #ffffff;
+	--foreground: #171717;
+
+	/* Surfaces sit above the page background; raised is for cards and table heads. */
+	--surface: #f7f7f8;
+	--surface-raised: #ffffff;
+	--border: #e2e2e5;
+	--border-strong: #c9c9cf;
+	--muted: #6b6b76;
+
+	--accent: #2f5fd0;
+	--accent-soft: #e8eefb;
+	--on-accent: #ffffff;
+
+	/* Money and budget tone. Receitas and under-budget read positive; expenses
+     and over-budget read negative; warning is the "close to the limit" band. */
+	--positive: #0f7a4f;
+	--negative: #b3261e;
+	--warning: #9a6200;
+
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-5: 1.5rem;
+	--space-6: 2.5rem;
+
+	--radius: 8px;
+	--radius-sm: 5px;
+
+	--content-width: 1100px;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+	:root {
+		--background: #0a0a0a;
+		--foreground: #ededed;
+
+		--surface: #151518;
+		--surface-raised: #1d1d21;
+		--border: #2c2c32;
+		--border-strong: #3d3d45;
+		--muted: #9a9aa5;
+
+		--accent: #6f9bf5;
+		--accent-soft: #1b2740;
+		--on-accent: #0a0a0a;
+
+		--positive: #4fcf90;
+		--negative: #ff6b60;
+		--warning: #e0a62e;
+	}
 }
 
 html {
-  height: 100%;
+	height: 100%;
 }
 
 html,
 body {
-  max-width: 100vw;
-  overflow-x: hidden;
+	max-width: 100vw;
+	overflow-x: hidden;
 }
 
 body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+	min-height: 100%;
+	display: flex;
+	flex-direction: column;
+	color: var(--foreground);
+	background: var(--background);
+	font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
 * {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+	box-sizing: border-box;
+	padding: 0;
+	margin: 0;
 }
 
 a {
-  color: inherit;
-  text-decoration: none;
+	color: inherit;
+	text-decoration: none;
 }
 
 @media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+	html {
+		color-scheme: dark;
+	}
+}
+
+h1 {
+	font-size: 1.5rem;
+	line-height: 1.25;
+}
+
+h2 {
+	font-size: 1.125rem;
+	line-height: 1.3;
+}
+
+/* Every figure in this app is money, and money in a column has to align on the
+   decimal point — otherwise comparing a budget to its actual means counting
+   digits. */
+.tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+/* Shared form control surface. Components layer their own classes on top; these
+   base rules keep every input, select and textarea consistent without each
+   module restating them. */
+input,
+select,
+textarea,
+button {
+	font: inherit;
+	color: inherit;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="date"],
+select,
+textarea {
+	width: 100%;
+	padding: var(--space-2) var(--space-3);
+	background: var(--surface-raised);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+}
+
+input[type="number"] {
+	font-variant-numeric: tabular-nums;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+input[aria-invalid="true"],
+select[aria-invalid="true"] {
+	border-color: var(--negative);
 }

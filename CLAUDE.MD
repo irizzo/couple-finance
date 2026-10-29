@@ -63,11 +63,55 @@ helpers have to stay in the non-action modules above.
 * `realAmount` may never exceed `totalAmount`; money is rounded to 2 decimals on
   every balance write.
 
-### Status
+## UI LAYER
 
-CRUD is done for all four entities, including `duplicateTransaction(id, overrides)`
-for the recurrent-transaction copy feature and `listTransactions({from, to, ...})`
-for the monthly view. Verified end-to-end against real Firestore.
+Three thin layers sit on top of the data layer. `src/database` stays a pure,
+route-unaware data API: it knows nothing about routes, `FormData`, or React.
 
-Still open: the UI, monthly budget planning by saldo/category, and
-`revalidatePath(...)` calls in the mutating actions once routes exist.
+| Layer | Purpose |
+| --- | --- |
+| `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`). Sync and Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. |
+| `src/app/_actions/*.ts` | Form adapters. The data-layer actions take typed objects, but `useActionState` needs `(prevState, formData)`. Each adapter parses `FormData`, calls the action, calls `revalidatePath`, and returns a `FormState`. `form-state.ts` holds the shared shape and is deliberately *not* `"use server"`. |
+| `src/components/*.tsx` | Shared presentation — form primitives, tables, navigation. |
+
+### UI conventions
+
+* **`revalidatePath` belongs to the adapters, not the actions.** Putting it in
+  `src/database` would make the data layer depend on route names, the one
+  coupling it is currently free of.
+* **Server Components by default.** `"use client"` only where the browser is
+  genuinely needed: `useFormStatus` (`SubmitButton`, `ConfirmSubmit`),
+  `window.confirm` (`ConfirmSubmit`), `usePathname` (`NavLink`). Navigation that
+  can be expressed as a link stays server-rendered — `MonthNav` is a Server
+  Component for exactly this reason.
+* **`searchParams` and `params` are Promises** (Next 16). Always `await` them.
+  Every `?month=` value goes through `resolveMonth`, which falls back to the
+  current month rather than erroring on a hand-edited URL.
+* **Local time for "now", UTC for arithmetic.** `currentMonth()`/`today()` read
+  local date parts — in UTC−3, `toISOString()` would report tomorrow after 21:00.
+  Month arithmetic pins to `Date.UTC`, where no DST shift can roll a boundary.
+* **Design tokens, not literal values.** Colour, spacing and radius all come from
+  the custom properties in `src/app/globals.css`, defined in *both* the light and
+  dark block. Money uses `tabular-nums` so columns align on the decimal point.
+* **Never swallow a failed `ActionResult`.** Render its `error` — a blank page is
+  worse than a visible message.
+
+## STATUS
+
+**Data layer** — CRUD is done for all four entities, including
+`duplicateTransaction(id, overrides)` for the recurrent-transaction copy feature
+and `listTransactions({from, to, ...})` for the monthly view. Note the Firestore
+database is currently **empty**: the original end-to-end verification ran against
+test data that was cleared afterwards.
+
+**UI** — the app shell, design system, and all three layers above are in place.
+The feature routes (`/transactions`, `/budget`, `/settings`) exist and resolve,
+but render placeholders.
+
+**Still open** — the settings CRUD screens, the monthly transactions view, the
+transaction form with duplication, and monthly budget planning by
+saldo/category, which also needs a new `budgets` collection.
+
+See [PLAN.md](PLAN.md) for the phased plan and
+[IMPLEMENTATION.MD](IMPLEMENTATION.MD) for what each finished phase actually
+produced, including where it departed from the plan.

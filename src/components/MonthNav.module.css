@@ -1,0 +1,38 @@
+.nav {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.step {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface-raised);
+	color: var(--muted);
+}
+
+.step:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.label {
+	min-width: 11ch;
+	font-size: 1.125rem;
+	font-weight: 600;
+	text-align: center;
+}
+
+.today {
+	font-size: 0.8125rem;
+	color: var(--accent);
+}
+
+.today:hover {
+	text-decoration: underline;
+}

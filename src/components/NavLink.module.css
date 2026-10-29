@@ -1,0 +1,16 @@
+.link {
+	padding: var(--space-2) 0;
+	font-size: 0.9375rem;
+	font-weight: 500;
+	color: var(--muted);
+	border-bottom: 2px solid transparent;
+}
+
+.link:hover {
+	color: var(--foreground);
+}
+
+.active {
+	color: var(--foreground);
+	border-bottom-color: var(--accent);
+}
