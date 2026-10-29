@@ -10,9 +10,9 @@ I want to be able to assing the account, the refereced saldo*, the category, dat
 The main features I want achieve in this project are:
 
 [X] CRUD all entities described at `src/types/index.ts`;
-[] See all the monthly transactions;
+[X] See all the monthly transactions;
 [] Plan the monthly budget by "Saldos" and "Categories";
-[] Have a way of duplicating transactions (so for not fixed but recurrent transactions I can just copy them instead of filling the information from scratch.);
+[X] Have a way of duplicating transactions (so for not fixed but recurrent transactions I can just copy them instead of filling the information from scratch.);
 
 ## DATA LAYER
 
@@ -119,29 +119,49 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
 * **Check each `ActionResult` individually.** A page doing several reads cannot
   narrow them with one `.find` over an array — the generics differ, so an
   explicit `if (!result.ok)` per value is what makes `.data` reachable.
+* **Form inputs are uncontrolled, with `defaultValue` from `state.values`.** That
+  is what makes a rejected submit come back with the user's typing intact.
+  Interactivity that has to change an input's value — mirroring `totalAmount`
+  into `realAmount`, the "dividir 50/50" button — is done imperatively through a
+  `ref`, because controlled state would fight those defaults.
+* **An entity id in a form travels as a hidden field, not a `.bind`.** Both the
+  create and edit routes then share one unbound `FormAction` signature, and a row
+  action needs no per-row bound closure.
+* **A transaction write revalidates `("/", "layout")`.** It moves balances on
+  *both* an account and a saldo, and those surface on the settings and budget
+  screens as well as the ledger. Entity writes revalidate only their own route.
+* **A write redirects to the month of the record, not the month of the form.**
+  They differ whenever you backdate or duplicate forward, and landing on a month
+  that doesn't contain what you just saved reads as a failure.
 
 ## STATUS
 
 **Data layer** — CRUD is done for all four entities, including
-`duplicateTransaction(id, overrides)` for the recurrent-transaction copy feature
-and `listTransactions({from, to, ...})` for the monthly view. Note the Firestore
-database is currently **empty**: the original end-to-end verification ran against
-test data that was cleared afterwards.
+`listTransactions({from, to, ...})` for the monthly view.
+`duplicateTransaction(id, overrides)` also exists and works, but **nothing calls
+it**: duplication is done by prefilling the create form instead (see below), so
+nothing is written until the amount has been checked.
 
 **UI** — the app shell, design system, and all three layers above are in place.
 
 * **Settings CRUD works.** Accounts, saldos and categories can be created,
   renamed, re-based, archived and restored at `/settings/*`.
-* **The monthly ledger works, read-only.** `/transactions?month=YYYY-MM` shows
-  the month's lançamentos with a real/total summary, independent conta/saldo/
-  categoria filters, and resolved names. No row actions yet.
+* **The monthly ledger works.** `/transactions?month=YYYY-MM` shows the month's
+  lançamentos with a real/total summary, independent conta/saldo/categoria
+  filters, resolved names, and an Ações column.
+* **Transactions are writable.** `/transactions/new` creates (with the
+  total→real mirror and the 50/50 split button), `/transactions/[id]/edit`
+  edits, and a row can be deleted — balances unwind on delete.
+* **Duplication works via `/transactions/new?from=<id>`.** Every field is
+  prefilled and the date resets, so a recurrent-but-variable expense only needs
+  its amount adjusted before saving.
 * `/budget` resolves but still renders a placeholder.
 
-Both verified end-to-end against real Firestore.
+All verified end-to-end against real Firestore, including the split-bill
+arithmetic above.
 
-**Still open** — the transaction form (create, edit, duplicate, delete) and
-monthly budget planning by saldo/category, which also needs a new `budgets`
-collection.
+**Still open** — monthly budget planning by saldo/category, which also needs a
+new `budgets` collection.
 
 See [PLAN.md](PLAN.md) for the phased plan and
 [IMPLEMENTATION.MD](IMPLEMENTATION.MD) for what each finished phase actually

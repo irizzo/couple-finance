@@ -1,0 +1,112 @@
+.form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding: var(--space-5);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-4);
+}
+
+.grow {
+	flex: 1 1 16rem;
+}
+
+.narrow {
+	flex: 0 1 11rem;
+}
+
+/* --- type radios --- */
+
+.typeGroup {
+	border: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.legend {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.radios {
+	display: flex;
+	gap: var(--space-3);
+}
+
+.radio {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface-raised);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.radio input {
+	width: auto;
+	accent-color: var(--accent);
+}
+
+/* --- the real/total pair --- */
+
+/* The two amounts are the heart of this app, so they sit together with the
+   split shortcut between them rather than being two unrelated fields. */
+.amounts {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	border: 1px dashed var(--border-strong);
+	border-radius: var(--radius);
+}
+
+.amountHelp {
+	flex: 1 1 100%;
+	margin-bottom: calc(-1 * var(--space-2));
+	font-size: 0.8125rem;
+	color: var(--muted);
+}
+
+.splitAction {
+	padding-top: 1.35rem;
+}
+
+/* --- footer --- */
+
+.actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+}
+
+.cancel {
+	font-size: 0.875rem;
+	color: var(--muted);
+}
+
+.cancel:hover {
+	color: var(--foreground);
+	text-decoration: underline;
+}
+
+.error {
+	padding: var(--space-3) var(--space-4);
+	border: 1px solid var(--negative);
+	border-radius: var(--radius-sm);
+	background: var(--surface-raised);
+	color: var(--negative);
+	font-size: 0.875rem;
+}

@@ -1,3 +1,4 @@
+import type { FormAction } from "@/app/_actions/form-state";
 import { formatDayMonth } from "@/lib/month";
 import {
 	type Account,
@@ -7,7 +8,10 @@ import {
 	TransactionType,
 } from "@/types";
 import { Money } from "./Money";
+import { TransactionRowActions } from "./TransactionRowActions";
 import styles from "./TransactionsTable.module.css";
+
+const COLUMN_COUNT = 9;
 
 interface TransactionsTableProps {
 	transactions: Transaction[];
@@ -17,6 +21,9 @@ interface TransactionsTableProps {
 	saldos: Map<string, Saldo>;
 	categories: Map<string, Category>;
 	emptyMessage: string;
+	/** Passed down rather than imported here: a Server Action is serializable
+	 * across the boundary, and this table stays a Server Component. */
+	deleteAction: FormAction;
 }
 
 interface NameCellProps {
@@ -50,6 +57,7 @@ export function TransactionsTable({
 	saldos,
 	categories,
 	emptyMessage,
+	deleteAction,
 }: TransactionsTableProps) {
 	return (
 		<div className={styles.tableWrap}>
@@ -68,12 +76,15 @@ export function TransactionsTable({
 						<th className={styles.numeric} scope="col">
 							Real
 						</th>
+						<th className={styles.actionsCell} scope="col">
+							Ações
+						</th>
 					</tr>
 				</thead>
 				<tbody>
 					{transactions.length === 0 ? (
 						<tr>
-							<td className={styles.empty} colSpan={8}>
+							<td className={styles.empty} colSpan={COLUMN_COUNT}>
 								{emptyMessage}
 							</td>
 						</tr>
@@ -116,6 +127,13 @@ export function TransactionsTable({
 									</td>
 									<td className={styles.numeric}>
 										<Money value={txn.realAmount} />
+									</td>
+									<td className={styles.actionsCell}>
+										<TransactionRowActions
+											deleteAction={deleteAction}
+											description={txn.description}
+											id={txn.id}
+										/>
 									</td>
 								</tr>
 							);

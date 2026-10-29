@@ -64,8 +64,8 @@ The existing [src/database/](src/database/) layer stays a pure, route-unaware da
 | 2 — Foundations | ✅ Done |
 | 3 — Settings CRUD | ✅ Done |
 | 4 — Monthly transactions view | ✅ Done |
-| 5 — Transaction create / edit / duplicate / delete | ⬜ Next |
-| 6 — Budget planning | ⬜ |
+| 5 — Transaction create / edit / duplicate / delete | ✅ Done |
+| 6 — Budget planning | ⬜ Next |
 | 7 — Polish and documentation | ⬜ |
 
 What each completed phase actually produced, and where it deviated from the text below, is recorded in [IMPLEMENTATION.MD](IMPLEMENTATION.MD).
@@ -183,7 +183,13 @@ Both: archive/unarchive only, never a delete button. Archived rows render dimmed
 
 ---
 
-## Phase 5 — Transaction create / edit / duplicate / delete
+## Phase 5 — Transaction create / edit / duplicate / delete ✅
+
+> **Done.** The ledger is now writable: `/transactions/new` (with `?from=` duplication), `/transactions/[id]/edit`, and an Ações column with Editar · Duplicar · Excluir. Verified end-to-end against live Firestore — **63 of 63 checks**, including the canonical R$ 90 / R$ 45 split bill moving the account by −90/−45 and unwinding exactly on delete. Three deviations from the text below:
+>
+> - **`quickDuplicateForm` was dropped.** A one-click `duplicateTransaction(id, {date: today()})` writes immediately, which for a *not fixed but recurrent* expense means saving the wrong amount and then editing it — and the new row would vanish from whichever month you were reading. The `?from=` prefill route is the single affordance instead. Consequence: the data-layer `duplicateTransaction` action is now **unused by the UI**; it stays in place as a working, verified API.
+> - **The edit route renders an `ErrorBanner` instead of `notFound()`.** "was not found" and a Firestore outage are different problems, and the action already distinguishes them.
+> - **`updateTransactionForm` reads the id from a hidden field** rather than being bound with `.bind(null, id)`, so both routes can share one unbound `FormAction` — see IMPLEMENTATION.MD.
 
 **`src/components/TransactionForm.tsx`** (client, `useActionState`) — shared by create and edit. Props: the action, initial `FormState`, and the account/saldo/category lists.
 

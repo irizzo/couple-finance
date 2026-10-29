@@ -94,3 +94,16 @@
 	text-align: center;
 	color: var(--muted);
 }
+
+.actionsCell {
+	text-align: right;
+	white-space: nowrap;
+}
+
+.rowActions {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	justify-content: flex-end;
+	align-items: center;
+}

@@ -9,7 +9,7 @@ when the phase lands. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the hi
 | 2 — Foundations | **Done** |
 | 3 — Settings CRUD | **Done** |
 | 4 — Monthly transactions view | **Done** |
-| 5 — Transaction create / edit / duplicate / delete | Not started |
+| 5 — Transaction create / edit / duplicate / delete | **Done** |
 | 6 — Budget planning | Not started |
 | 7 — Polish and documentation | Not started |
 
@@ -544,3 +544,157 @@ database for state, and normalize markup before asserting on text.
 - **Still only the Phase 3 seed data** in Firestore: "Conta Corrente",
   "Essenciais", "Moradia", "Mercado e feira", and zero transactions. The ledger
   is genuinely empty until Phase 5 can write to it.
+
+---
+
+## Phase 5 — Transaction create / edit / duplicate / delete
+
+The ledger is writable. A transaction can be entered, edited, duplicated and
+deleted from the browser, and the balance arithmetic CLAUDE.MD describes is now
+driven entirely through the UI. Two of the four project goals — the monthly view
+and duplication — are met as of this phase.
+
+### Adapter — [src/app/_actions/transactions.ts](src/app/_actions/transactions.ts)
+
+`createTransactionForm`, `updateTransactionForm`, `deleteTransactionForm`, all in
+the same unbound `(previous, formData)` shape as the Phase 3 adapters, over a
+shared private `readInput(formData)`.
+
+- **The id travels as a hidden field, not through `.bind(null, id)`.** PLAN.md
+  sketched binding, which would give the edit action a different signature from
+  the create action and force a per-row bound closure for delete. With a hidden
+  `id` both routes share one `FormAction`, the form component needs no special
+  case, and the delete action can be passed down through a Server Component
+  (`TransactionsTable`) as a single serializable value. Trust is unaffected:
+  nothing was ever safer about a bound id — the action validates the id against
+  Firestore either way, and this app has no auth to speak of in the first place.
+- **`revalidatePath("/", "layout")`,** not a single route. A transaction write
+  moves balances on both the account and the saldo, and those figures are
+  rendered on `/settings/accounts` and `/settings/saldos` as well as here.
+- **Create and update redirect to the month of the saved record**
+  (`result.data.date.slice(0, 7)`), not the month the form was opened from. They
+  differ whenever you backdate or duplicate forward, and landing on a month that
+  doesn't contain what you just saved reads as a failure. **Delete does not
+  redirect** — it is invoked from a row, so the ledger should stay put.
+
+### Form — [src/components/TransactionForm.tsx](src/components/TransactionForm.tsx)
+
+One client component shared by both routes. The parts worth knowing:
+
+- **Inputs are uncontrolled, `defaultValue` fed from `state.values`.** That is
+  what makes a rejected submit come back with the user's typing intact.
+- **The total→real mirror is imperative.** `realAmount` follows `totalAmount` as
+  you type until you touch it, via a `ref` and a `realEdited` flag — controlled
+  state would fight those defaults. The flag initialises to `true` when the two
+  amounts already differ, so opening an existing split bill and correcting the
+  total cannot silently overwrite the real share.
+- **"Dividir 50/50"** is `type="button"` (an unqualified `<button>` in a form
+  submits it) and marks the field as edited, since halving *is* taking it over.
+- The type radios sit in a `fieldset`/`legend`; the amounts carry a one-line
+  explanation of what total and real mean, using the R$ 90 / R$ 45 example from
+  CLAUDE.MD, because that distinction is the whole premise of the app.
+
+`src/components/transaction-options.ts` builds the `<select>` options and takes
+the "(arquivada)" / "(arquivado)" suffix as an argument — the page knows which
+entity it is, and Portuguese agrees in gender.
+
+### Routes added in Phase 5
+
+| Route | Notes |
+| --- | --- |
+| `/transactions/new` | Active-only entity lists: an archived target would only be refused on submit. `?from=<id>` prefills every field for duplication. `?month=` keeps "Voltar ao extrato" pointing where you came from. |
+| `/transactions/[id]/edit` | Lists loaded with `includeArchived: true`, so an archived account stays visible and selected rather than silently dropping the record's current value. |
+
+Both pages refuse to render a form when no account, saldo or category exists,
+linking to settings instead.
+
+**The create form's default date follows the month in view.** Opening it from a
+past or future month pre-dates it to that month's first day; the current month
+gets today. Otherwise saving would redirect to a different month than the one
+being read — the same reasoning as the redirect rule, applied to the default.
+
+### Row actions
+
+`TransactionRowActions` (client) renders Editar · Duplicar · Excluir;
+`TransactionsTable` gained a ninth column and a `deleteAction` prop. The table
+stays a **Server** Component — a Server Action is serializable across the
+boundary, so the page hands it down rather than the table importing it.
+
+Only the delete needs client state, for `ConfirmSubmit` and to surface a failure
+in the row. Editar and Duplicar are plain `<Link>`s.
+
+The ledger header gained a primary **Nova transação** button carrying the current
+month.
+
+### Deviations from PLAN.md
+
+- **`quickDuplicateForm` was dropped entirely.** The plan listed a one-click
+  `duplicateTransaction(id, {date: today()})` beside the `?from=` route.
+  CLAUDE.MD asks for duplication of "**not fixed** but recurrent transactions" —
+  the amount is precisely the thing that changes, so a one-click write saves a
+  wrong figure and then needs an edit. It would also drop the new row into
+  today's month, making it vanish from whichever month you were reading. The
+  prefill route does the job with one affordance: nothing is written until you
+  submit. **Consequence: the data-layer `duplicateTransaction` is now unused by
+  the UI.** It stays — it works, it is verified, and it is the natural API if a
+  "repeat for the next six months" feature ever shows up.
+- **The edit route renders an `ErrorBanner` instead of calling `notFound()`.**
+  "was not found" and a Firestore outage are different problems; the action
+  already distinguishes them, and flattening both into a 404 throws that away.
+- **The id is a hidden field rather than a bound argument** (reasoning above).
+
+### How Phase 5 was verified
+
+```text
+npx tsc --noEmit         clean
+npx biome check src/     clean — same 4 pre-existing warnings
+npm run build            10 routes, including ƒ /transactions/[id]/edit
+```
+
+Then **63 of 63** end-to-end checks against the running app, driving the real
+forms over HTTP and asserting against **Firestore** for every stateful claim.
+
+| Area | Verified |
+| --- | --- |
+| Create | The canonical split bill — R$ 90 total / R$ 45 real on Conta Corrente / Essenciais / Moradia — written as one document with the right date, saldo and category |
+| Balances | Account moved **−90 / −45** and the saldo likewise, asserted as deltas against the live baseline (this database starts at 1500/1500, so the figures are 1410/1455 where CLAUDE.MD's 1000-real example says 910/955) |
+| Ledger | The row renders in `<tbody>` with its account name; the Ações header, all three row actions and the Nova transação button are present |
+| Rejection | `realAmount` 200 against a 90 total wrote **nothing**, named `realAmount` as the failing field, and echoed the typed description back |
+| Archived mid-history | With Conta Corrente archived, the edit form still offers it, labels it "(arquivada)" and keeps it selected; a *new* transaction is not offered it at all, and forcing the id through is refused and writes nothing |
+| Edit across accounts | Reassigning to a second account returned the first to its exact baseline and moved −90/−30 onto the second — the delta-accumulation path |
+| Duplicate | `?from=` prefilled description, the **edited** real share and the same saldo, carried no `id`, and **wrote nothing on GET**; submitting with a changed amount produced a second independent document and moved the balances twice |
+| Delete | Both documents hard-deleted; every account and saldo balance back to its pre-run figure to the cent; zero transactions left |
+
+The harness and its fixture account were deleted afterwards, and the database was
+re-inspected: identical to its pre-run state.
+
+Two harness bugs, both worth recording since they are the same trap in a new
+guise: Next's `$ACTION_*` payload is **HTML-entity-encoded** in the attribute
+(`&quot;`), and POSTing it back raw fails with "Failed to find Server Action" —
+indistinguishable from the Phase 3 missing-`value` bug unless you look at the
+response text. And `firebase-admin`'s ESM entry has no default export; the
+subpath imports (`firebase-admin/app`, `firebase-admin/firestore`) are what work,
+exactly as [src/database/firebase.config.js](src/database/firebase.config.js)
+already does it.
+
+### Left open after Phase 5
+
+- **`duplicateTransaction` has no caller.** Dead code in the strict sense, kept
+  deliberately (above). Phase 7 should decide: keep as API, or delete.
+- **Deleting from the ledger has no undo.** Transactions hard-delete by design
+  (nothing references them), and the confirmation says the balances will unwind.
+  Fine for a two-person app; worth knowing it is final.
+- **The form has no client-side guard for `realAmount > totalAmount`.** The
+  server rejects it with a field error and the typing survives, which is correct
+  but costs a round trip. A `max` attribute would need to track the total field
+  live; not obviously worth the client state.
+- **Phase 3's open item about widening `revalidatePath` on the settings adapters
+  is still open.** Transaction writes now revalidate the whole layout, so the
+  ledger is never stale after a write; the reverse case — editing an account's
+  `initialAmount` while the ledger is cached — still only revalidates
+  `/settings/accounts`. The ledger shows no account balances today, so nothing
+  is visibly wrong. Phase 6's budget page may change that.
+- **Firestore is back to exactly the Phase 3 seed**: "Conta Corrente"
+  (1500/1500), "Essenciais" (0/0), "Moradia", "Mercado e feira", zero
+  transactions. Phase 6's budget screen needs real transactions to show
+  anything — they can now be entered through the UI.

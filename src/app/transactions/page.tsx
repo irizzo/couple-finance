@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { deleteTransactionForm } from "@/app/_actions/transactions";
+import controls from "@/components/controls.module.css";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { MonthNav } from "@/components/MonthNav";
 import { SummaryCards } from "@/components/SummaryCards";
@@ -53,7 +55,17 @@ export default async function TransactionsPage({
 	const header = (
 		<div className={styles.header}>
 			<h1>Transações</h1>
-			<MonthNav basePath="/transactions" month={month} params={selected} />
+			<div className={styles.headerActions}>
+				<MonthNav basePath="/transactions" month={month} params={selected} />
+				{/* Carries the month so the form opens on the month being read, and so
+				    "Voltar ao extrato" returns here rather than to the current month. */}
+				<Link
+					className={`${controls.button} ${controls.primary}`}
+					href={`/transactions/new?month=${month}`}
+				>
+					Nova transação
+				</Link>
+			</div>
 		</div>
 	);
 
@@ -111,6 +123,7 @@ export default async function TransactionsPage({
 					<TransactionsTable
 						accounts={indexById(accounts.data)}
 						categories={indexById(categories.data)}
+						deleteAction={deleteTransactionForm}
 						emptyMessage={
 							filtered
 								? `Nenhum lançamento em ${formatMonthLabel(month)} com esses filtros.`
