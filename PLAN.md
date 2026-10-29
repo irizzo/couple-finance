@@ -63,8 +63,8 @@ The existing [src/database/](src/database/) layer stays a pure, route-unaware da
 | 1 — Decouple Category from Saldo | ✅ Done |
 | 2 — Foundations | ✅ Done |
 | 3 — Settings CRUD | ✅ Done |
-| 4 — Monthly transactions view | ⬜ Next |
-| 5 — Transaction create / edit / duplicate / delete | ⬜ |
+| 4 — Monthly transactions view | ✅ Done |
+| 5 — Transaction create / edit / duplicate / delete | ⬜ Next |
 | 6 — Budget planning | ⬜ |
 | 7 — Polish and documentation | ⬜ |
 
@@ -163,7 +163,9 @@ Both: archive/unarchive only, never a delete button. Archived rows render dimmed
 
 ---
 
-## Phase 4 — Monthly transactions view
+## Phase 4 — Monthly transactions view ✅
+
+> **Done**, verified 28/28 against the running app. Two deviations: the expense/receita **sign rule was not extracted** into a shared helper — `monthSummary` groups by type and sums magnitudes, deriving `net` as income − expenses, so `postings`/`signed` stay untouched in the data layer and no existing file was modified. And **`sumBy` was not written**: nothing in the monthly view needs keyed sums, so it moves to Phase 6 where `buildBudgetRows` actually uses it.
 
 **Route:** `src/app/transactions/page.tsx` — reads `?month=YYYY-MM` (default `currentMonth()`), calls `monthBounds(month)` → `listTransactions({from, to})`, and in parallel `listAccounts({includeArchived:true})`, `listSaldos({includeArchived:true})`, `listCategories({includeArchived:true})` for name lookup. `Promise.all`.
 

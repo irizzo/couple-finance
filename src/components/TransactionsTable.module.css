@@ -1,0 +1,96 @@
+.tableWrap {
+	overflow-x: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9375rem;
+}
+
+.table th {
+	padding: var(--space-3) var(--space-4);
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--muted);
+	text-align: left;
+	white-space: nowrap;
+}
+
+.table td {
+	padding: var(--space-3) var(--space-4);
+	border-bottom: 1px solid var(--border);
+	vertical-align: top;
+}
+
+.table tr:last-child td {
+	border-bottom: none;
+}
+
+.date {
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+	color: var(--muted);
+}
+
+.description {
+	font-weight: 500;
+}
+
+.tag {
+	color: var(--muted);
+	font-size: 0.875rem;
+	white-space: nowrap;
+}
+
+.numeric {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* An id with no matching document — the entity was deleted straight out of
+   Firestore. Soft delete means this should not happen through the UI, so it is
+   flagged rather than hidden. */
+.missing {
+	color: var(--negative);
+	font-size: 0.875rem;
+	font-style: italic;
+}
+
+.archivedHint {
+	color: var(--muted);
+	font-size: 0.75rem;
+}
+
+.badge {
+	display: inline-block;
+	padding: 0 var(--space-2);
+	border-radius: 999px;
+	border: 1px solid currentcolor;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.expense {
+	color: var(--negative);
+}
+
+.income {
+	color: var(--positive);
+}
+
+.empty {
+	padding: var(--space-6) var(--space-4);
+	text-align: center;
+	color: var(--muted);
+}

@@ -70,7 +70,7 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
 
 | Layer | Purpose |
 | --- | --- |
-| `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`). Sync and Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. |
+| `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`), transaction aggregation (`rollup.ts`). Sync and Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. |
 | `src/app/_actions/*.ts` | Form adapters. The data-layer actions take typed objects, but `useActionState` needs `(prevState, formData)`. Each adapter parses `FormData`, calls the action, calls `revalidatePath`, and returns a `FormState`. `form-state.ts` holds the shared shape and is deliberately *not* `"use server"`. |
 | `src/components/*.tsx` | Shared presentation — form primitives, tables, navigation. |
 
@@ -108,6 +108,17 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
 * **Display strings are passed in, never derived from the entity name.**
   Portuguese agrees in gender ("Nome **da** conta" / "Nome **do** saldo"), and
   guessing that from a noun inside a component is how it breaks.
+* **The sign rule stays in the data layer.** `postings`/`signed` describe how a
+  transaction moves a *stored balance*. Views group by `type` and display
+  magnitudes — an expense reads `R$ 90,00` beside a "Despesa" badge, not a
+  negative number whose sign depends on a convention defined elsewhere.
+* **Lookups load archived entities too.** A transaction stays listable and
+  editable after its account is archived, so any id→name map feeding the ledger
+  or an edit form uses `includeArchived: true`. An id that still fails to
+  resolve is shown as `(removido)`, not hidden.
+* **Check each `ActionResult` individually.** A page doing several reads cannot
+  narrow them with one `.find` over an array — the generics differ, so an
+  explicit `if (!result.ok)` per value is what makes `.data` reachable.
 
 ## STATUS
 
@@ -118,14 +129,19 @@ database is currently **empty**: the original end-to-end verification ran agains
 test data that was cleared afterwards.
 
 **UI** — the app shell, design system, and all three layers above are in place.
-**Settings CRUD works**: accounts, saldos and categories can be created,
-renamed, re-based, archived and restored at `/settings/*`, verified end-to-end
-against real Firestore. `/transactions` and `/budget` resolve but still render
-placeholders.
 
-**Still open** — the monthly transactions view, the transaction form with
-duplication, and monthly budget planning by saldo/category, which also needs a
-new `budgets` collection.
+* **Settings CRUD works.** Accounts, saldos and categories can be created,
+  renamed, re-based, archived and restored at `/settings/*`.
+* **The monthly ledger works, read-only.** `/transactions?month=YYYY-MM` shows
+  the month's lançamentos with a real/total summary, independent conta/saldo/
+  categoria filters, and resolved names. No row actions yet.
+* `/budget` resolves but still renders a placeholder.
+
+Both verified end-to-end against real Firestore.
+
+**Still open** — the transaction form (create, edit, duplicate, delete) and
+monthly budget planning by saldo/category, which also needs a new `budgets`
+collection.
 
 See [PLAN.md](PLAN.md) for the phased plan and
 [IMPLEMENTATION.MD](IMPLEMENTATION.MD) for what each finished phase actually

@@ -8,7 +8,7 @@ when the phase lands. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the hi
 | 1 — Decouple Category from Saldo | **Done** |
 | 2 — Foundations | **Done** |
 | 3 — Settings CRUD | **Done** |
-| 4 — Monthly transactions view | Not started |
+| 4 — Monthly transactions view | **Done** |
 | 5 — Transaction create / edit / duplicate / delete | Not started |
 | 6 — Budget planning | Not started |
 | 7 — Polish and documentation | Not started |
@@ -428,3 +428,119 @@ with no `value` attribute, so the scraper dropped it and every POST failed with
   partial patch, but the row form submits name *and* `initialAmount` together,
   so an unchanged amount is rewritten with the same value. Harmless — the delta
   is zero — but it means the row cannot express "rename only".
+
+---
+
+## Phase 4 — Monthly transactions view
+
+The ledger. `/transactions?month=YYYY-MM` shows a month's lançamentos with a
+summary, independent filters, and resolved account/saldo/category names. Still
+read-only — creating and editing is Phase 5.
+
+### Aggregation — [src/lib/rollup.ts](src/lib/rollup.ts)
+
+`indexById(items)` for the name lookups and `monthSummary(transactions)` →
+`{expenses, income, net, count}`, each as an `AmountPair` of `{total, real}`.
+
+**The expense/receita sign rule stays in the data layer.** PLAN.md expected this
+module to need it — either restated here or extracted from
+`transactions.actions.ts` into a shared helper. Neither was necessary:
+`monthSummary` groups by `type` and sums **magnitudes**, deriving `net` as
+income − expenses. That reads better in the UI (an expense row shows
+`R$ 90,00` beside a "Despesa" badge, not a `-R$ 90,00` whose sign has to agree
+with a convention defined elsewhere) and leaves `postings`/`signed` untouched in
+the one place that genuinely needs them: posting to a stored balance. **No
+existing data-layer file was modified in this phase.**
+
+`sumBy` — the third function PLAN.md lists here — was not written. Nothing in
+the monthly view needs keyed sums; it lands in Phase 6 with `buildBudgetRows`,
+which actually uses it.
+
+[src/lib/month.ts](src/lib/month.ts) gained `formatDayMonth("2026-10-29")` →
+`"29/10"`. Day and month only: the year is already in the page header and a
+ledger column should stay narrow.
+
+### Ledger components
+
+| Component | Kind | Notes |
+| --- | --- | --- |
+| `TransactionsTable` | server | Eight columns: data, descrição, conta, **saldo**, **categoria**, tipo, total, real. Saldo and categoria are separate columns now that neither nests in the other. |
+| `SummaryCards` | server | Despesas / Receitas / Resultado / Lançamentos. Each leads with the **real** figure and carries `total` beneath — on the split bill those differ by half, which is the whole point of the app. |
+| `TransactionFilters` | server | Conta / saldo / categoria as a plain `GET` form. |
+
+Two details:
+
+- **The filters ship no JavaScript.** A `<form method="GET">` writes the values
+  into the query string, the page re-reads them server-side, and
+  `listTransactions` applies them through its existing optional filters.
+  `month` rides along in a hidden field so filtering never jumps you to a
+  different month, and `MonthNav` receives the filters through the `params` prop
+  added in Phase 2 — so stepping months keeps the view you had narrowed to.
+- **An unresolvable id is flagged, not blanked.** `NameCell` renders
+  `(removido)` in the negative colour. Accounts, saldos and categories are
+  soft-deleted, so a missing id means the document was removed outside the app
+  and the transaction now points nowhere — worth seeing rather than hiding.
+
+Lookups load with `includeArchived: true`: a transaction stays listable after
+its account is archived, so the map has to resolve those ids too. Archived
+entities render with a muted `(arquivada)` / `(arquivado)` hint.
+
+### Page
+
+[src/app/transactions/page.tsx](src/app/transactions/page.tsx) awaits
+`searchParams`, resolves the month, and fires all four reads in one
+`Promise.all`. The four `ActionResult`s are then checked **one at a time**
+rather than through a `.find` over the array — they are differently-typed
+generics, and only an explicit `!result.ok` per value narrows the union enough
+to reach `.data`. A first draft used `.find` and needed an unreachable fallback
+branch to compile, which was a sign the shape was wrong.
+
+If no account, saldo or category exists yet, the page says so and links to
+settings instead of rendering an empty ledger.
+
+### How Phase 4 was verified
+
+```text
+npx tsc --noEmit         clean
+npx biome check src/     clean — same 4 pre-existing warnings
+npm run build            8 routes
+```
+
+Then **28 of 28** end-to-end checks against the running app, with six
+transactions seeded directly into Firestore and removed afterwards. Seeding raw
+rather than through `createTransaction` is deliberate: the view reads only
+transaction documents, so raw docs exercise exactly what this phase renders, and
+because no balance deltas are ever posted the account and saldo balances stay
+untouched — the database ended exactly as it started (verified: 0 transactions,
+the two scratch entities deleted, the archived flag restored).
+
+| Area | Verified |
+| --- | --- |
+| Range | Five October rows; the September transaction excluded; September shows its one row; `2026-01` shows the empty message and a zeroed summary |
+| Arithmetic | Despesas real **415,00** / total **520,00**; resultado real **4.585,00** / total **4.480,00** — hand-computed from the seed, so the real/total split is confirmed, not just "a number rendered" |
+| The split bill | R$ 90 and R$ 45 on the same row |
+| Names | Accounts, saldos and categories all resolved; a dangling `categoryId` rendered `(removido)`; a transaction on an **archived** category still listed, marked `(arquivada)` |
+| Order | Newest first — 25/10 above 05/10 |
+| Filters | Account → 4 rows, saldo → 1, category → 2, account+category → 1. The category filter spanned **both saldos**, confirming saldo-independence in the UI. "Limpar" appears only when filtered |
+| Month nav | Preserves the active filter across a month change |
+| Bad input | `?month=banana` falls back instead of erroring |
+
+A second methodology note, worth recording because it cost real time: the
+archived-category assertion failed while the feature worked. React emits
+`<!-- -->` separators between adjacent text nodes in SSR output, so the JSX
+`({label})` renders as `(<!-- -->arquivada<!-- -->)` and a literal search for
+`(arquivada)` misses. Normalizing those separators before matching fixed the
+assertion. Combined with Phase 3's false-positive problem, the lesson is the
+same both times: **HTML string matching is a weak oracle** — assert against the
+database for state, and normalize markup before asserting on text.
+
+### Left open after Phase 4
+
+- **No row actions yet.** Edit, duplicate and delete buttons arrive in Phase 5
+  along with the routes they need; adding dead buttons now would be worse.
+- **`TransactionsTable` has no footer totals.** `SummaryCards` already sums the
+  filtered set, and mixing expenses and receitas into one column total would be
+  meaningless.
+- **Still only the Phase 3 seed data** in Firestore: "Conta Corrente",
+  "Essenciais", "Moradia", "Mercado e feira", and zero transactions. The ledger
+  is genuinely empty until Phase 5 can write to it.

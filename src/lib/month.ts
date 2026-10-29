@@ -74,6 +74,15 @@ export function monthBounds(month: string): { from: string; to: string } {
 	return { from: `${month}-01`, to: `${month}-${pad(lastDay)}` };
 }
 
+/**
+ * `"2026-10-29"` → `"29/10"`. Day and month only: the year is already in the
+ * page header, and a ledger column should stay narrow.
+ */
+export function formatDayMonth(isoDate: string): string {
+	const [, month, day] = isoDate.split("-");
+	return `${day}/${month}`;
+}
+
 /** `"2026-10"` → `"Outubro de 2026"`. */
 export function formatMonthLabel(month: string): string {
 	const { year, monthIndex } = parts(month);
