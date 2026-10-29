@@ -94,7 +94,20 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
   the custom properties in `src/app/globals.css`, defined in *both* the light and
   dark block. Money uses `tabular-nums` so columns align on the decimal point.
 * **Never swallow a failed `ActionResult`.** Render its `error` — a blank page is
-  worse than a visible message.
+  worse than a visible message. `ErrorBanner` is the component for it.
+* **Only serializable props cross into a Client Component.** Server actions are
+  the exception; plain functions are not. Label objects handed from a page to a
+  manager use template strings with `{name}` placeholders, substituted on the
+  client — see `entity-labels.ts`.
+* **Inline editing inside a table ties inputs to their form by `id`.** A
+  `<form>` may not span table cells, so each row's inputs carry `form="edit-…"`.
+  The save button is therefore not a form descendant and `useFormStatus` cannot
+  see it — take the pending flag from `useActionState`'s third return value.
+* **`useActionState` does not auto-reset a form.** A successful create has to
+  clear it through a `ref`, or the next entry starts with the last one's values.
+* **Display strings are passed in, never derived from the entity name.**
+  Portuguese agrees in gender ("Nome **da** conta" / "Nome **do** saldo"), and
+  guessing that from a noun inside a component is how it breaks.
 
 ## STATUS
 
@@ -105,12 +118,14 @@ database is currently **empty**: the original end-to-end verification ran agains
 test data that was cleared afterwards.
 
 **UI** — the app shell, design system, and all three layers above are in place.
-The feature routes (`/transactions`, `/budget`, `/settings`) exist and resolve,
-but render placeholders.
+**Settings CRUD works**: accounts, saldos and categories can be created,
+renamed, re-based, archived and restored at `/settings/*`, verified end-to-end
+against real Firestore. `/transactions` and `/budget` resolve but still render
+placeholders.
 
-**Still open** — the settings CRUD screens, the monthly transactions view, the
-transaction form with duplication, and monthly budget planning by
-saldo/category, which also needs a new `budgets` collection.
+**Still open** — the monthly transactions view, the transaction form with
+duplication, and monthly budget planning by saldo/category, which also needs a
+new `budgets` collection.
 
 See [PLAN.md](PLAN.md) for the phased plan and
 [IMPLEMENTATION.MD](IMPLEMENTATION.MD) for what each finished phase actually

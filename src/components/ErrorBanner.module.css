@@ -1,0 +1,8 @@
+.banner {
+	padding: var(--space-3) var(--space-4);
+	border: 1px solid var(--negative);
+	border-radius: var(--radius-sm);
+	background: var(--surface-raised);
+	color: var(--negative);
+	font-size: 0.875rem;
+}

@@ -26,6 +26,28 @@ export interface FormState {
 
 export const IDLE_FORM_STATE: FormState = { status: "idle" };
 
+/**
+ * The shape every adapter in this folder exports, and the only shape
+ * `useActionState` accepts. Server actions are serializable across the
+ * server/client boundary, so a Server Component can pass one of these straight
+ * into a Client Component as a prop.
+ */
+export type FormAction = (
+	previous: FormState,
+	formData: FormData,
+) => Promise<FormState>;
+
+/**
+ * Reads one text field. `FormData.get` returns `File | string | null`, and every
+ * field in this app is text — this narrows it in one place so the adapters don't
+ * each repeat the check. A missing field becomes `""`, which the data layer's
+ * `nonEmptyString` validator then rejects with a proper message.
+ */
+export function textField(formData: FormData, field: string): string {
+	const value = formData.get(field);
+	return typeof value === "string" ? value : "";
+}
+
 /** Collects the text entries of a submission, for the `values` echo. */
 export function formValues(formData: FormData): Record<string, string> {
 	const values: Record<string, string> = {};

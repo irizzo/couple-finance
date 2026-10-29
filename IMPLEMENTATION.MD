@@ -7,7 +7,7 @@ when the phase lands. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the hi
 | --- | --- |
 | 1 — Decouple Category from Saldo | **Done** |
 | 2 — Foundations | **Done** |
-| 3 — Settings CRUD | Not started |
+| 3 — Settings CRUD | **Done** |
 | 4 — Monthly transactions view | Not started |
 | 5 — Transaction create / edit / duplicate / delete | Not started |
 | 6 — Budget planning | Not started |
@@ -292,3 +292,139 @@ Live smoke test against `npm run dev`:
   it is left for the owner to call. Everything under `src/` is clean.
 - **`Placeholder` and its three stub bodies are scaffolding**, due for deletion
   in Phases 3, 4 and 6 respectively.
+
+---
+
+## Phase 3 — Settings CRUD
+
+The first usable screens. Accounts, saldos and categories can now be created,
+renamed, re-based, archived and restored from the browser — which is the
+prerequisite for everything else, since a transaction needs all three to exist.
+
+### Form adapters — `src/app/_actions/`
+
+`accounts.ts`, `saldos.ts`, `categories.ts`, each `"use server"` and each
+exporting `create…Form` / `update…Form` / `archive…Form` / `unarchive…Form` in
+the `(previousState, formData)` shape. Every one does the same four things:
+parse `FormData`, call the data-layer action, `revalidatePath` on success, and
+return `fromResult(...)`.
+
+They stay thin because the data layer already does the work — the accounts and
+saldos adapters are line-for-line parallel, mirroring `createBalanceEntity`
+existing once beneath them.
+
+Two additions to `form-state.ts`:
+
+- `FormAction` — the shared signature, so managers can take actions as props.
+  Server actions are serializable across the server/client boundary, which is
+  what makes the whole page-passes-actions-to-manager arrangement work.
+- `textField(formData, field)` — `FormData.get` returns `File | string | null`
+  and every field here is text. Narrowing it in one place keeps the three
+  adapters from each repeating the check. A missing field becomes `""`, which
+  `nonEmptyString` then rejects with a proper message.
+
+### Components
+
+| Component | Kind | Notes |
+| --- | --- | --- |
+| `BalanceEntityManager` | client | Create form + table for accounts **and** saldos — one component, because the two entities are structurally identical. |
+| `BalanceEntityRow` | client | Inline-editable row: name, `initialAmount`, both balances, save, archive/restore. |
+| `NamedEntityManager` | client | The name-only variant, for categories. |
+| `NamedEntityRow` | client | One editable field, no balance columns. |
+| `ArchivedToggle` | server | Flips `?archived=1`. |
+| `ErrorBanner` | server | Renders a failed `ActionResult.error`. |
+| `entity-labels.ts` | — | The `EntityLabels` shape plus `archiveConfirmFor`. |
+
+Three implementation details worth knowing:
+
+- **Inline editing inside a table uses the HTML `form` attribute.** A `<form>`
+  may not span table cells, so each row renders its form in the first `<td>` and
+  the other inputs point at it by id. The consequence: the save button is not a
+  descendant of its form, so `useFormStatus` cannot see it — the pending flag
+  comes from `useActionState`'s **third** return value instead.
+- **`useActionState` does not reset the form** the way a bare `<form action>`
+  does, so a successful create clears it explicitly through a `ref`. Without
+  that, the next entity starts with the previous one's name still in the box.
+- **`EntityLabels.archiveConfirm` is a template string, not a function.** It was
+  written as `(name) => string` first, which would have thrown at runtime:
+  these labels are defined in Server Components and passed to Client Components,
+  and only serializable values cross that boundary. `archiveConfirmFor`
+  substitutes `{name}` on the client side.
+
+Labels are passed in rather than derived from the entity name because Portuguese
+articles and participles agree in gender — "Nome **da** conta" vs "Nome **do**
+saldo", "arquivad**a**" vs "arquivad**o**". An earlier draft sniffed the noun
+to pick the article, which is exactly the kind of thing that breaks on the
+fourth entity.
+
+### Routes
+
+- **`src/app/settings/layout.tsx`** — sub-navigation (Contas · Saldos ·
+  Categorias) shared by the three screens. `NavLink` prefix-matches, so the
+  top-level "Configurações" stays highlighted throughout.
+- **`/settings`** now redirects to `/settings/accounts` rather than rendering an
+  index of links. PLAN.md sketched an index page; a layout with tabs is fewer
+  clicks and one less screen to maintain, and contas is what you need first
+  anyway.
+- **`/settings/accounts`, `/settings/saldos`, `/settings/categories`** — each
+  awaits `searchParams`, turns `?archived=1` into `includeArchived`, calls its
+  list action, and renders either the manager or an `ErrorBanner`. Archived
+  state lives in the URL, not in client state: the server does the filtering, so
+  the URL should say which view you are looking at.
+
+Each page carries a short lead explaining what the entity is for — including, on
+the categories page, that categories do not belong to a saldo.
+
+**Archiving asks for confirmation; restoring does not.** Archiving is reversible
+but it stops new postings, so an accidental click is worth catching. Restore is
+a single click away and harmless. This is the first real use of `ConfirmSubmit`
+from Phase 2.
+
+### How Phase 3 was verified
+
+```text
+npx tsc --noEmit         clean
+npx biome check src/     clean — same 4 pre-existing warnings, nothing new
+npm run build            9 routes, all three settings screens server-rendered
+```
+
+Then a real end-to-end run against live Firestore. Next renders server-action
+forms with hidden `$ACTION_*` fields for no-JS progressive enhancement, so a
+script can scrape those and POST them back — exercising the actual adapter →
+action → Firestore path rather than a reimplementation of it. **22 of 22
+checks passed:**
+
+| Area | Verified |
+| --- | --- |
+| Create | Exactly one document written; name trimmed; one `initialAmount` seeds *both* balances; `archived: false` written explicitly; the row renders in the table body |
+| Validation | Blank name wrote nothing and returned "must be a non-empty text"; `"abc"` as an amount wrote nothing and returned "must be a number" — confirming `parseAmount`'s `NaN` reaches `finiteNumber` instead of silently becoming 0 |
+| Update | Restating `initialAmount` 1000 → 1500 shifted `totalBalance` and `realBalance` by the same delta |
+| Categories | Created without a saldo; **no `saldoId` field on the documents**, confirming Phase 1 end-to-end for the first time |
+| Rename | Persisted through the row edit form |
+| Archive | Set `archived: true`; hidden from the default view; visible under `?archived=1` with the badge and a Restaurar button; active rows still listed |
+| Restore | Set `archived: false` |
+
+One methodology note, because it nearly produced a false green: the first
+harness asserted against page HTML, and "passed" on entities that had never been
+written — the strings it searched for ("Essenciais", "Mercado") also appear in
+the pages' own placeholder and lead copy. The database was empty the whole time.
+The rewrite asserts against Firestore and scopes any HTML check to the
+`<tbody>`. **The write path was broken at that point** (`$ACTION_REF_1` renders
+with no `value` attribute, so the scraper dropped it and every POST failed with
+"Failed to find Server Action") and the HTML assertions hid it completely.
+
+### Left open after Phase 3
+
+- **Seed data is now in Firestore** from the verification run: account "Conta
+  Corrente" (R$ 1.500), saldo "Essenciais" (R$ 0), categories "Moradia" and
+  "Mercado e feira". Real, editable through the UI, and useful for looking at
+  Phase 4 — rename or archive it as you like.
+- **`revalidatePath` only targets each settings route.** That is correct today,
+  but Phase 4 puts balances on the transactions view too, and Phase 5's
+  transaction writes move both an account and a saldo. PLAN.md already calls for
+  `revalidatePath("/", "layout")` on transaction mutations; the settings
+  adapters may need widening at the same time.
+- **`updateAccountForm` always sends both fields.** The data layer accepts a
+  partial patch, but the row form submits name *and* `initialAmount` together,
+  so an unchanged amount is rewritten with the same value. Harmless — the delta
+  is zero — but it means the row cannot express "rename only".

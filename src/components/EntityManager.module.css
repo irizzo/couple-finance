@@ -1,0 +1,135 @@
+/* Shared by BalanceEntityManager (contas, saldos) and NamedEntityManager
+   (categorias). The two render different columns but the same furniture. */
+
+.manager {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+/* --- create form --- */
+
+.createForm {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.grow {
+	flex: 1 1 14rem;
+}
+
+.amount {
+	flex: 0 1 11rem;
+}
+
+/* Lifts the button to sit on the input baseline, past the field's label row. */
+.createAction {
+	padding-top: 1.35rem;
+}
+
+/* --- table --- */
+
+.tableWrap {
+	overflow-x: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9375rem;
+}
+
+.table th {
+	padding: var(--space-3) var(--space-4);
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--muted);
+	text-align: left;
+	white-space: nowrap;
+}
+
+.table td {
+	padding: var(--space-3) var(--space-4);
+	border-bottom: 1px solid var(--border);
+	vertical-align: middle;
+}
+
+.table tr:last-child td {
+	border-bottom: none;
+}
+
+.numeric {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.actionsCell {
+	white-space: nowrap;
+	text-align: right;
+}
+
+.rowActions {
+	display: inline-flex;
+	gap: var(--space-2);
+	justify-content: flex-end;
+}
+
+/* An archived row stays readable — it is still history — but should not read as
+   an active option. */
+.archivedRow td {
+	opacity: 0.55;
+}
+
+.archivedTag {
+	margin-left: var(--space-2);
+	padding: 0 var(--space-2);
+	border: 1px solid var(--border-strong);
+	border-radius: 999px;
+	font-size: 0.6875rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--muted);
+}
+
+/* --- feedback --- */
+
+/* Top-level failure from the create form. A failed ActionResult always gets
+   shown; never swallow one. */
+.formError {
+	flex: 1 1 100%;
+	color: var(--negative);
+	font-size: 0.8125rem;
+}
+
+.rowError {
+	padding: 0 var(--space-4) var(--space-3);
+	color: var(--negative);
+	font-size: 0.8125rem;
+}
+
+.empty {
+	padding: var(--space-6) var(--space-4);
+	text-align: center;
+	color: var(--muted);
+}
+
+.nameInput {
+	min-width: 10rem;
+}
+
+.amountInput {
+	max-width: 9rem;
+	text-align: right;
+}

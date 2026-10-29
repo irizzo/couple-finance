@@ -1,0 +1,68 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import {
+	archiveCategory,
+	createCategory,
+	unarchiveCategory,
+	updateCategory,
+} from "@/database/categories.actions";
+import {
+	type FormState,
+	formValues,
+	fromResult,
+	textField,
+} from "./form-state";
+
+/**
+ * Form adapters for categories. Name only — a category carries no balances, and
+ * since Phase 1 no `saldoId` either.
+ */
+
+const PATH = "/settings/categories";
+
+export async function createCategoryForm(
+	_previous: FormState,
+	formData: FormData,
+): Promise<FormState> {
+	const result = await createCategory({ name: textField(formData, "name") });
+	if (result.ok) {
+		revalidatePath(PATH);
+	}
+	return fromResult(result, formValues(formData));
+}
+
+export async function updateCategoryForm(
+	_previous: FormState,
+	formData: FormData,
+): Promise<FormState> {
+	const result = await updateCategory(textField(formData, "id"), {
+		name: textField(formData, "name"),
+	});
+	if (result.ok) {
+		revalidatePath(PATH);
+	}
+	return fromResult(result, formValues(formData));
+}
+
+export async function archiveCategoryForm(
+	_previous: FormState,
+	formData: FormData,
+): Promise<FormState> {
+	const result = await archiveCategory(textField(formData, "id"));
+	if (result.ok) {
+		revalidatePath(PATH);
+	}
+	return fromResult(result);
+}
+
+export async function unarchiveCategoryForm(
+	_previous: FormState,
+	formData: FormData,
+): Promise<FormState> {
+	const result = await unarchiveCategory(textField(formData, "id"));
+	if (result.ok) {
+		revalidatePath(PATH);
+	}
+	return fromResult(result);
+}

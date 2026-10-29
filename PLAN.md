@@ -1,7 +1,7 @@
 # Implementation Plan — Couple Finance UI & Budget Planning
 
 > Approved 2026-10-29. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the execution track — tick phases off here as they land.
-> Implement this plan, step by step. After each step is completed, stop and document what has been done updating this file, CLAUDE.MD and IMPLEMENTATION.md.
+> Implement this plan, step by step. Check CLAUDE.MD and IMPLEMENTATION.MD for the current implementation status and adopted conventions. After each step is completed, stop and document what has been done updating this file, CLAUDE.MD and IMPLEMENTATION.md.
 
 ## Context
 
@@ -62,8 +62,8 @@ The existing [src/database/](src/database/) layer stays a pure, route-unaware da
 | --- | --- |
 | 1 — Decouple Category from Saldo | ✅ Done |
 | 2 — Foundations | ✅ Done |
-| 3 — Settings CRUD | ⬜ Next |
-| 4 — Monthly transactions view | ⬜ |
+| 3 — Settings CRUD | ✅ Done |
+| 4 — Monthly transactions view | ⬜ Next |
 | 5 — Transaction create / edit / duplicate / delete | ⬜ |
 | 6 — Budget planning | ⬜ |
 | 7 — Polish and documentation | ⬜ |
@@ -140,9 +140,11 @@ Three things the earlier design needed are now gone before they were ever built:
 
 ---
 
-## Phase 3 — Settings CRUD (accounts, saldos, categories)
+## Phase 3 — Settings CRUD (accounts, saldos, categories) ✅
 
 Before the transaction UI deliberately: you cannot create a transaction until an account, a saldo, and a category exist.
+
+> **Done**, verified 22/22 against live Firestore. Two deviations: `/settings` redirects to `/settings/accounts` behind a shared layout with sub-tabs, instead of being an index page of links; and `EntityLabels.archiveConfirm` is a template string rather than a `(name) => string` builder, because only serializable props cross the server/client boundary.
 
 **Routes:** `src/app/settings/accounts/page.tsx`, `src/app/settings/saldos/page.tsx`, `src/app/settings/categories/page.tsx`.
 

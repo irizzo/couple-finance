@@ -1,0 +1,9 @@
+.toggle {
+	font-size: 0.8125rem;
+	color: var(--accent);
+	white-space: nowrap;
+}
+
+.toggle:hover {
+	text-decoration: underline;
+}
