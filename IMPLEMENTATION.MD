@@ -11,7 +11,7 @@ when the phase lands. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the hi
 | 4 — Monthly transactions view | **Done** |
 | 5 — Transaction create / edit / duplicate / delete | **Done** |
 | 6 — Budget planning | **Done** |
-| 7 — Polish and documentation | Not started |
+| 7 — Polish and documentation | **Done** |
 
 ---
 
@@ -854,3 +854,166 @@ at fault.
   cheap, high-value addition flagged since Phase 1.
 - **Firestore is back to the Phase 3 seed** with zero transactions and zero
   budgets, so the app is ready to be used for real.
+
+---
+
+## Phase 7 — Polish and documentation
+
+The last phase. No features: a sweep over the error and empty states, the
+removal of two pieces of dead weight, and the tooling made to report zero errors
+so that it stays worth running.
+
+### The empty/error-state audit found nothing missing
+
+Every one of the eleven routes was read end to end. The pattern the earlier
+phases established had already been applied everywhere:
+
+| Route | On a failed read | On a first run |
+| --- | --- | --- |
+| `/transactions` | `ErrorBanner` per result, header still drawn | "crie uma conta, um saldo e uma categoria", linked to settings |
+| `/transactions/new` | ditto, plus a separate banner when only the `?from=` source fails | same three-way check, against the **active** lists |
+| `/transactions/[id]/edit` | ditto — deliberately *not* `notFound()` | n/a |
+| `/budget` | `ErrorBanner` per result | "crie ao menos um saldo e uma categoria", linked to settings |
+| `/settings/{accounts,saldos,categories}` | `ErrorBanner` instead of the manager | `EntityLabels.empty`, inside the table |
+
+Two gaps were real, and both were about *reachability* rather than a missing
+message.
+
+**The edit form's "Voltar ao extrato" dropped the month.** The link in the
+header pointed at a bare `/transactions` while the cancel button beside the form
+pointed at the month the record belongs to, so leaving by the header silently
+moved you to the current month and the transaction you had just been editing was
+nowhere on screen. The header is now a function of its href: the error branches
+pass `/transactions`, because before the record is read there is no month to go
+back to, and the success branch passes the record's own month. This is the
+convention CLAUDE.MD already stated for *writes* — "a write redirects to the
+month of the record, not the month of the form" — applied to the way out as well
+as the way through.
+
+**Nothing handled a URL that isn't a route, or a throw that isn't an
+`ActionResult`.** Two files, both new:
+
+- [src/app/not-found.tsx](src/app/not-found.tsx) — the 404, inside the app shell
+  with a link back to the ledger. It is explicitly *not* where a missing record
+  lands: `getTransaction` returns `{ok: false, error}` and the page renders that
+  message, because "this transaction was deleted" and "this address does not
+  exist" are different things to be told. Verified both ways round.
+- [src/app/error.tsx](src/app/error.tsx) — the boundary for anything that
+  throws. Reaching it means a bug, since the actions never throw, so it shows
+  `error.message`, the `digest` (in production that digest is the only handle on
+  the server-side log, where the real message goes), a `reset` button and a way
+  out. Named `RouteError`, not `Error`: Biome's `noShadowRestrictedNames` is
+  right that shadowing the global is a trap, and Next only cares that it is the
+  segment's default export.
+
+### `duplicateTransaction` was deleted
+
+Phase 5 replaced it with the `?from=` prefill route and it has had no caller
+since. Keeping a verified-but-unused action looked harmless, but it is an
+affordance pointing the wrong way: a server-side copy must write immediately,
+and these transactions are recurrent yet *variable*, so it would save the wrong
+amount and then need an edit. A comment in its place in
+[src/database/transactions.actions.ts](src/database/transactions.actions.ts)
+records why duplication has no action of its own, which is the part that was
+worth keeping. `strip` and `UpdateTransactionInput` both stay — `updateTransaction`
+still uses them.
+
+### The `firebase` client package is gone
+
+`npm uninstall firebase` — 80-odd transitive packages out of the lockfile. Only
+`firebase-admin` was ever imported (verified by grep across `src/` first), and
+CLAUDE.MD forbids the client SDK outright, so the dependency was a standing
+invitation to write code that bypasses the whole Server Action layer.
+
+### Tooling — `npm run lint` now reports zero errors
+
+It reported four before, none of them about this project's code: the formatter
+disagreeing with `package.json`, `.claude/settings.local.json`, `next.config.ts`
+and `tsconfig.json`. A lint command that always fails is a lint command nobody
+reads, so [biome.json](biome.json) now draws the line at ownership —
+
+- `package.json`, `package-lock.json` and `.claude/` are **excluded**. npm and
+  Claude Code rewrite those on their own schedule; tab-formatting them is a
+  fight that restarts with the next install.
+- `next.config.ts` and `tsconfig.json` were **formatted** — they are hand-edited
+  and stable, so they should match the project.
+- `next.config.ts` gets the same `noDefaultExport: "off"` override `src/app/**`
+  already had, for the same reason: the framework requires the default export.
+
+Four **warnings** remain, all in files written before this plan started, and all
+deliberately left:
+
+| Warning | Why it stays |
+| --- | --- |
+| `noDefaultExport` on [src/database/db.ts](src/database/db.ts) | `import db from "@/database/db"` reads the way the one global handle should; renaming it touches every action file to satisfy a style rule |
+| `noEnum` on `TransactionType` | The enum's *values* (`"expense"`, `"income"`) are stored in Firestore documents. A union of string literals would be equivalent, but this is the vocabulary the data is written in |
+| `useNamingConvention` ×2 on `EXPENSE` / `INCOME` | Biome wants `Expense`/`Income`. Screaming case for enum members is the more common TypeScript convention and the members are referenced throughout the data layer |
+
+They are listed in CLAUDE.MD so that a future reader sees four accepted
+warnings rather than four unfinished jobs.
+
+### How Phase 7 was verified
+
+```text
+npx tsc --noEmit         clean
+npm run lint             0 errors, 4 accepted warnings
+npm run format           clean
+npm run build            10 routes
+```
+
+Then **35 of 35** end-to-end checks against the running app:
+
+| Area | Verified |
+| --- | --- |
+| Routes | All 11 URLs render 200, including `?month=`, `?archived=1` and `?from=` |
+| 404 | `/nao-existe` returns **404** with the app's own page, the shell and nav intact, and a link back |
+| 404 vs missing record | `/transactions/<unknown>/edit` returns **200** with `Transaction "…" was not found` in a `role="alert"` banner, and does *not* claim the route is missing |
+| Regression | The canonical R$ 90 / R$ 45 split bill still moves the account by −90/−45 and writes exactly one document, after the `transactions.actions.ts` edit |
+| Back link | The edit page's "Voltar ao extrato" points at `?month=2026-10` — the record's month — and no month-less copy is left on the page |
+| Duplication | `?from=` still opens prefilled, announces itself as a duplication, and **writes nothing on GET**, with `duplicateTransaction` deleted |
+| Budget | Both sections render and the plan measures the R$ 45 real share |
+| Teardown | Deleted through the delete action; balances back to 1500/1500; no budget documents created |
+
+Firestore ended identical to its pre-run state (1 account, 1 saldo, 2
+categories, 0 transactions, 0 budgets).
+
+**What the harness could *not* check: `error.tsx`.** A probe route that throws
+proved the boundary is reached — the dev server answered 500 and serialized
+`{digest, message: "boom: …"}` into the flight payload, which is exactly what
+the component consumes — but `error.tsx` is a Client Component, so it renders
+after hydration and `curl` only ever sees the shell. The probe also had to be
+deleted rather than kept: a page that throws is prerendered at build time and
+**fails `npm run build`**. So the boundary is wired and its input confirmed; its
+rendered output is unverified and needs a browser.
+
+Two harness bugs were found and fixed before any product code was touched, both
+the same weak-oracle mistake in a new costume:
+
+1. `name="description"` matched the `<meta name="description">` in `<head>`
+   before the form, so the scraped "form" contained no `$ACTION_*` fields and
+   every POST failed. Switched to `id="description"`.
+2. Asserting on raw HTML found "Página não encontrada" on a page that never
+   displays it: Next serializes **every boundary the route can render**,
+   `not-found` included, into the RSC flight payload inside `<script>` tags.
+   The harness now strips script blocks before matching.
+
+### Left open after Phase 7
+
+- **`error.tsx` has never been seen rendered.** See above — it needs one manual
+  look in a browser, and there is no way to provoke it that survives a build.
+- **No authentication.** Unchanged and unplanned: every Server Action is
+  reachable by anyone who can reach the app, and the Admin SDK bypasses
+  Firestore security rules by design. Fine on `localhost`, and the one thing
+  that must be built before this is deployed anywhere public.
+- **Deployment needs the service account as an env var.**
+  [src/database/firebase.config.js](src/database/firebase.config.js) imports
+  `serviceAccountKey.json` from disk, and that file is gitignored, so a deploy
+  will not have it.
+- **Still no test framework.** Flagged in every phase since the first and never
+  taken up. `src/lib/rollup.ts` and `src/lib/month.ts` are pure, Firestore-free
+  and the densest logic in the app; Vitest over them stays the cheapest
+  available improvement.
+- **The archived-target budget row**, carried over from Phase 6: archiving a
+  saldo stops `copyBudgets` carrying it forward, but a target already set for
+  the current month survives and its row stays editable. Intended, and still
+  worth a second look once there is real data.

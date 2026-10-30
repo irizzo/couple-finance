@@ -7,7 +7,16 @@
 	},
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["**", "!node_modules", "!.next", "!dist", "!build"]
+		"includes": [
+			"**",
+			"!node_modules",
+			"!.next",
+			"!dist",
+			"!build",
+			"!.claude",
+			"!package.json",
+			"!package-lock.json"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -26,6 +35,16 @@
 		}
 	},
 	"overrides": [
+		{
+			"includes": ["next.config.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noDefaultExport": "off"
+					}
+				}
+			}
+		},
 		{
 			"includes": ["src/app/**/*.ts", "src/app/**/*.tsx"],
 			"linter": {

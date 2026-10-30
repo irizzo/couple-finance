@@ -67,9 +67,13 @@ The existing [src/database/](src/database/) layer stays a pure, route-unaware da
 | 4 — Monthly transactions view | ✅ Done |
 | 5 — Transaction create / edit / duplicate / delete | ✅ Done |
 | 6 — Budget planning | ✅ Done |
-| 7 — Polish and documentation | ⬜ Next |
+| 7 — Polish and documentation | ✅ Done |
 
-What each completed phase actually produced, and where it deviated from the text below, is recorded in [IMPLEMENTATION.MD](IMPLEMENTATION.MD).
+**The plan is complete.** All four goals in [CLAUDE.MD](CLAUDE.MD) are met and
+verified end-to-end against real Firestore. What each phase actually produced,
+and where it deviated from the text below, is recorded in
+[IMPLEMENTATION.MD](IMPLEMENTATION.MD) — including what is still open, of which
+the only one that blocks anything is the missing authentication.
 
 ---
 
@@ -292,7 +296,15 @@ Two sibling sections on one page — **Por Saldo** and **Por Categoria** — eac
 
 ---
 
-## Phase 7 — Polish and documentation
+## Phase 7 — Polish and documentation ✅
+
+> **Done**, verified **35 of 35** against the running app. The CLAUDE.MD edits below had mostly landed incrementally as each phase went in, so the work here was the audit and the cleanup. Deviations and additions:
+>
+> - **The empty/error-state audit found no missing messages** — the pattern was already everywhere — but two real gaps in *reachability*: the edit form's "Voltar ao extrato" dropped the month (now carries the record's own), and nothing handled a URL that isn't a route or a throw that isn't an `ActionResult`.
+> - **Two files were added beyond the plan:** `src/app/not-found.tsx` and `src/app/error.tsx`. A missing *record* deliberately does not go to the 404 — the action's own message is more useful than "não encontrada".
+> - **`duplicateTransaction` was deleted**, not kept as an API. It had no caller after Phase 5 and pointed the wrong way: a server-side copy must write immediately, and these amounts need checking first. A comment records why duplication has no action of its own.
+> - **`npm run lint` was made to report zero errors.** It reported four, all about files this project doesn't own; `biome.json` now excludes `package.json`, `package-lock.json` and `.claude/`, and `next.config.ts` got the `noDefaultExport` override `src/app/**` already had. Four **warnings** remain by decision, listed in CLAUDE.MD.
+> - **`error.tsx` is wired but its rendered output is unverified.** It is a Client Component, so `curl` only sees the shell; a probe route proved the boundary is reached, and also proved such a route can't be kept — a page that throws fails `npm run build`.
 
 1. **[CLAUDE.MD](CLAUDE.MD)** — the doc is the project's spec, so it needs real edits here:
    - Tick the three remaining feature boxes.

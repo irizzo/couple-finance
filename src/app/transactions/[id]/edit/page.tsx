@@ -30,47 +30,36 @@ export default async function EditTransactionPage({
 		listCategories({ includeArchived: true }),
 	]);
 
-	const header = (
+	// Takes an href because the month is only knowable once the record has been
+	// read: it belongs to the transaction, not to the URL that opened the form.
+	// Before that, "voltar" can only mean the current month.
+	const header = (backHref: string) => (
 		<div className={styles.header}>
 			<h1>Editar lançamento</h1>
-			<Link href="/transactions">Voltar ao extrato</Link>
+			<Link href={backHref}>Voltar ao extrato</Link>
 		</div>
 	);
 
 	// A failed read is reported with its own message rather than flattened into a
 	// 404: "was not found" and a Firestore outage are different problems, and the
 	// action already distinguishes them.
+	const errorPage = (message: string) => (
+		<div className={styles.page}>
+			{header("/transactions")}
+			<ErrorBanner>{message}</ErrorBanner>
+		</div>
+	);
 	if (!existing.ok) {
-		return (
-			<div className={styles.page}>
-				{header}
-				<ErrorBanner>{existing.error}</ErrorBanner>
-			</div>
-		);
+		return errorPage(existing.error);
 	}
 	if (!accounts.ok) {
-		return (
-			<div className={styles.page}>
-				{header}
-				<ErrorBanner>{accounts.error}</ErrorBanner>
-			</div>
-		);
+		return errorPage(accounts.error);
 	}
 	if (!saldos.ok) {
-		return (
-			<div className={styles.page}>
-				{header}
-				<ErrorBanner>{saldos.error}</ErrorBanner>
-			</div>
-		);
+		return errorPage(saldos.error);
 	}
 	if (!categories.ok) {
-		return (
-			<div className={styles.page}>
-				{header}
-				<ErrorBanner>{categories.error}</ErrorBanner>
-			</div>
-		);
+		return errorPage(categories.error);
 	}
 
 	const txn = existing.data;
@@ -78,7 +67,7 @@ export default async function EditTransactionPage({
 
 	return (
 		<div className={styles.page}>
-			{header}
+			{header(backHref)}
 			<TransactionForm
 				accounts={toOptions(accounts.data, "(arquivada)")}
 				action={updateTransactionForm}

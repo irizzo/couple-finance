@@ -383,30 +383,10 @@ export async function deleteTransaction(
 	}
 }
 
-/**
- * Copies a recurrent-but-not-fixed transaction instead of retyping it; pass the
- * new `date` (or any other field) as an override. Routed through
- * `createTransaction` so validation and balance updates stay identical.
+/*
+ * Duplication deliberately has no action of its own. A server-side copy would
+ * have to write immediately, and these transactions are recurrent but *not*
+ * fixed — the amount usually needs a tweak first. `/transactions/new?from=<id>`
+ * prefills the form from `getTransaction` instead, so nothing is written until
+ * the figures have been checked.
  */
-export async function duplicateTransaction(
-	id: string,
-	overrides: UpdateTransactionInput = {},
-): Promise<ActionResult<Transaction>> {
-	const existing = await getTransaction(id);
-	if (!existing.ok) {
-		return existing;
-	}
-
-	const source = existing.data;
-	return createTransaction({
-		date: source.date,
-		description: source.description,
-		totalAmount: source.totalAmount,
-		realAmount: source.realAmount,
-		accountId: source.accountId,
-		saldoId: source.saldoId,
-		categoryId: source.categoryId,
-		type: source.type,
-		...strip(overrides),
-	});
-}

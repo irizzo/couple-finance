@@ -157,15 +157,29 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
 * **Totals are computed in `src/lib`, not in JSX.** A footer that re-derives a
   sum duplicates the rule about which rows are included in it; the pure function
   returns the rows *and* their totals together.
+* **A missing record is not a 404.** `not-found.tsx` is for a URL that isn't a
+  route. A record that doesn't exist comes back as `{ok: false, error}` and the
+  page renders that message, because "this transaction was deleted" and "this
+  address does not exist" are different things to be told.
+* **`error.tsx` is for bugs only.** Since the actions never throw, reaching the
+  boundary means something broke where nothing was supposed to — so it shows the
+  message *and* the `digest`, which in production is the only handle on the
+  server log. Note it is a Client Component: it renders after hydration, so it
+  cannot be verified by fetching HTML.
+* **A link out of a form carries the record's month**, same as a write's
+  redirect. Before the record is read there is no month, so an error branch can
+  only point at the current one.
 
 ## STATUS
 
+**The plan is complete.** All four goals above are met and verified end-to-end
+against real Firestore.
+
 **Data layer** — CRUD is done for all five collections, including
 `listTransactions({from, to, ...})` for the monthly view and
-`setBudget`/`listBudgets`/`deleteBudget`/`copyBudgets` for the plan.
-`duplicateTransaction(id, overrides)` also exists and works, but **nothing calls
-it**: duplication is done by prefilling the create form instead (see below), so
-nothing is written until the amount has been checked.
+`setBudget`/`listBudgets`/`deleteBudget`/`copyBudgets` for the plan. There is no
+`duplicateTransaction`: duplication prefills the create form instead (see
+below), so nothing is written until the amount has been checked.
 
 **UI** — the app shell, design system, and all three layers above are in place.
 
@@ -184,17 +198,40 @@ nothing is written until the amount has been checked.
   saldos and over categories independently, each a flat table editable in
   place, with planned / gasto / restante / consumption bar, per-section totals,
   and a "copy last month" button.
+* **Nothing renders a blank page.** Every page reports a failed `ActionResult`
+  in a banner and has a first-run empty state pointing at what must be created
+  first. `not-found.tsx` covers a URL that isn't a route, `error.tsx` anything
+  that throws.
 
-All four goals are met, and all of it is verified end-to-end against real
-Firestore — including the split-bill arithmetic above and an overrun against a
-category target.
+All of it is verified end-to-end against real Firestore — including the
+split-bill arithmetic above and an overrun against a category target.
 
-**Still open** — polish only: the empty/error-state audit and dropping the
-unused `firebase` client dependency (Phase 7). Plus the standing caveat below.
+### Tooling
+
+`npm run lint` reports **zero errors and four warnings**. The four are
+deliberate, not unfinished work:
+
+* `noDefaultExport` on `src/database/db.ts` — `import db from …` reads the way
+  the one global handle should.
+* `noEnum` and two `useNamingConvention` on `TransactionType` — the enum's
+  values (`"expense"`, `"income"`) are what is stored in Firestore documents,
+  and `EXPENSE`/`INCOME` is the convention the data layer is written in.
+
+Biome does not police `package.json`, `package-lock.json` or `.claude/`: other
+tools rewrite those.
+
+### Still open
 
 **No authentication exists.** Every Server Action is reachable by anyone who can
 reach the app, and the Admin SDK bypasses Firestore security rules by design.
-That is fine on `localhost` and must be fixed before any public deploy.
+That is fine on `localhost` and **must be fixed before any public deploy** — it
+is the only open item that blocks anything.
+
+Also: deploying needs `serviceAccountKey.json` supplied as an env var, since
+`src/database/firebase.config.js` imports it from disk and the file is
+gitignored. There is no test framework — `src/lib/rollup.ts` and
+`src/lib/month.ts` are pure and would be cheap to cover. And `error.tsx` has
+never been seen rendered, only proven reachable; it needs one look in a browser.
 
 See [PLAN.md](PLAN.md) for the phased plan and
 [IMPLEMENTATION.MD](IMPLEMENTATION.MD) for what each finished phase actually
