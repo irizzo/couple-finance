@@ -1,11 +1,31 @@
 import type { DocumentData, DocumentSnapshot } from "firebase-admin/firestore";
+import type { BudgetScope } from "@/types";
 
 export const COLLECTIONS = {
 	accounts: "accounts",
 	saldos: "saldos",
 	categories: "categories",
 	transactions: "transactions",
+	budgets: "budgets",
 } as const;
+
+/**
+ * A budget's document id is derived from what it plans, not generated: one
+ * target in one month can only have one planned amount, so making that the id
+ * enforces it in Firestore itself. Saving becomes an idempotent `set` with no
+ * duplicate-detection query and no transaction.
+ *
+ * Lives here rather than in `budgets.actions.ts` because a `"use server"` module
+ * may only export async functions, and an id derivation has no business being
+ * awaited.
+ */
+export function budgetDocId(budget: {
+	month: string;
+	scope: BudgetScope;
+	targetId: string;
+}): string {
+	return `${budget.month}__${budget.scope}__${budget.targetId}`;
+}
 
 /** Maps a Firestore snapshot onto an entity, with the doc id as `id`. */
 export function withId<T extends { id: string }>(

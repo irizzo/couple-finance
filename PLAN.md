@@ -2,6 +2,7 @@
 
 > Approved 2026-10-29. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the execution track — tick phases off here as they land.
 > Implement this plan, step by step. Check CLAUDE.MD and IMPLEMENTATION.MD for the current implementation status and adopted conventions. After each step is completed, stop and document what has been done updating this file, CLAUDE.MD and IMPLEMENTATION.md.
+>Ask any necessary questions to complete the task.
 
 ## Context
 
@@ -65,8 +66,8 @@ The existing [src/database/](src/database/) layer stays a pure, route-unaware da
 | 3 — Settings CRUD | ✅ Done |
 | 4 — Monthly transactions view | ✅ Done |
 | 5 — Transaction create / edit / duplicate / delete | ✅ Done |
-| 6 — Budget planning | ⬜ Next |
-| 7 — Polish and documentation | ⬜ |
+| 6 — Budget planning | ✅ Done |
+| 7 — Polish and documentation | ⬜ Next |
 
 What each completed phase actually produced, and where it deviated from the text below, is recorded in [IMPLEMENTATION.MD](IMPLEMENTATION.MD).
 
@@ -216,7 +217,16 @@ Both: archive/unarchive only, never a delete button. Archived rows render dimmed
 
 ---
 
-## Phase 6 — Budget planning by saldo and by category
+## Phase 6 — Budget planning by saldo and by category ✅
+
+> **Done.** `/budget?month=YYYY-MM` plans a month over saldos and categories independently, each table editable in place, with a "copy last month" button. Verified end-to-end against live Firestore — **60 of 60 checks**, including the R$ 480 overrun against a R$ 300 category target, a receita in the same month *not* paying for it, and a second copy duplicating nothing. Deviations from the text below:
+>
+> - **The derived document id lives in `collections.ts` as `budgetDocId`,** not in the actions module: a `"use server"` file may only export async functions, and an id derivation has no business being awaited.
+> - **`deleteBudgetForm` was not written.** Clearing the input clears the target, inside `setBudgetForm` — a dedicated delete control would be a third button on every row for an action already expressible by emptying the field. Zero stays a real target, so blank and `0` are deliberately different.
+> - **`buildBudgetRows` returns a `BudgetSection`**, not a bare `BudgetRow[]` — the footer totals are part of the same reduction and recomputing them in JSX would duplicate the rule about which rows count.
+> - **The "sem orçamento" trailing row became a `(removido)` row.** Every target already gets its own row whether or not it is planned, so the only spend with nowhere to go is spend pointing at a document that no longer exists.
+> - **`FormState` gained an optional `message`**, so the copy button can report "2 valores copiados · 1 já definido". A no-op copy and a successful one are otherwise indistinguishable on the page.
+> - **`Placeholder` and its stylesheet were deleted** — `/budget` was their last user.
 
 ### 6a. Data layer
 

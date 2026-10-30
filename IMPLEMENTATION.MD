@@ -10,7 +10,7 @@ when the phase lands. [CLAUDE.MD](CLAUDE.MD) stays the spec; this file is the hi
 | 3 — Settings CRUD | **Done** |
 | 4 — Monthly transactions view | **Done** |
 | 5 — Transaction create / edit / duplicate / delete | **Done** |
-| 6 — Budget planning | Not started |
+| 6 — Budget planning | **Done** |
 | 7 — Polish and documentation | Not started |
 
 ---
@@ -698,3 +698,159 @@ already does it.
   (1500/1500), "Essenciais" (0/0), "Moradia", "Mercado e feira", zero
   transactions. Phase 6's budget screen needs real transactions to show
   anything — they can now be entered through the UI.
+
+---
+
+## Phase 6 — Budget planning by saldo and by category
+
+The last of CLAUDE.MD's four goals. `/budget?month=YYYY-MM` plans a month over
+saldos and over categories **independently**, each as a flat table you edit in
+place, plus a one-click copy of the previous month's plan.
+
+### Data model
+
+**[src/types/index.ts](src/types/index.ts)** — `BudgetScope = "saldo" | "category"`,
+`Budget {id, month, scope, targetId, plannedAmount}` and `SetBudgetInput`.
+
+A discriminated `scope` + `targetId` pair rather than nullable `saldoId` /
+`categoryId` columns. Since Phase 1 the two dimensions are siblings, not
+parent/child, and one pair says that plainly — it also makes
+`buildBudgetRows({scope})` one function called twice instead of two.
+
+**`budgets` added to `COLLECTIONS`**, and `isoMonth` to the validators. Unlike
+`isoDate` it needs no `Date` round-trip: there is no `YYYY-MM` equivalent of
+February 30th, so the pattern alone is sufficient — the month range is spelled
+out in the regex so `2026-13` and `2026-00` fail.
+
+### Actions — [src/database/budgets.actions.ts](src/database/budgets.actions.ts)
+
+`setBudget`, `listBudgets(month)`, `deleteBudget`, `copyBudgets(from, to)`.
+
+- **The document id is derived, not generated**: `${month}__${scope}__${targetId}`.
+  One target can only be planned once in one month, so making that the id
+  enforces it in Firestore itself — the upsert is a plain `set` with no
+  duplicate-detection query, no `runTransaction`, and a double-submitted form is
+  idempotent instead of a second row. **It lives in
+  [collections.ts](src/database/collections.ts) as `budgetDocId`**, not in this
+  module: a `"use server"` file may only export async functions, and an id
+  derivation has no business being awaited. (PLAN.md had it inside the actions
+  file; writing it there produced an `async` function returning a template
+  string, which is what made the problem obvious.)
+- **`setBudget` reuses `assertActive`** from `entities.ts` against whichever
+  collection the scope names. This is the payoff for generalizing it in Phase 1
+  rather than leaving it a saldo-only helper — one call covers both scopes.
+- **Budgets hard-delete.** Nothing references a budget document, so the
+  soft-delete treatment the other entities get would only add a field no one
+  reads.
+- **`copyBudgets` is additive.** A target already planned in the destination
+  month is left alone, and a target whose saldo or category has since been
+  archived is skipped; it returns `{copied, skipped}`. Copying is a shortcut for
+  typing, so it must never overwrite a figure set by hand — which also makes it
+  safe to press twice. It reads both entity collections once and checks a `Set`,
+  rather than calling `assertActive` per budget: a copy touches all of them.
+
+### Rollup — [src/lib/rollup.ts](src/lib/rollup.ts)
+
+`sumBy(transactions, keyOf)` — finally written, in the phase that actually needed
+it (Phase 4 didn't) — and `buildBudgetRows({scope, entities, budgets, transactions})`.
+
+- **Expenses only.** A receita in the month does not reduce a target, or a
+  salary deposit would silently pay for an overrun.
+- **It returns a `BudgetSection`, not a `BudgetRow[]`** — rows plus `planned`,
+  `spent` and `remaining` totals. The footer figures are part of the same
+  reduction, and recomputing them in JSX would duplicate the rule about which
+  rows count toward them.
+- **Section `remaining` sums the planned rows only**, so it is deliberately *not*
+  `planned - spent`. Charging spend on an unbudgeted target against the plan's
+  remainder would make the plan look broken by money it never claimed to cover.
+- **Which rows appear**: every active target, plus any archived one that carries
+  money this month (spend or a planned figure). That keeps a long tail of
+  archived targets out of the table without ever hiding a number.
+- **The "sem orçamento" row from PLAN.md became a `(removido)` row.** Every
+  target already gets a row whether planned or not, so the only spend with
+  nowhere to go is spend pointing at a document that no longer exists. Surfaced
+  rather than dropped, or the section total would silently disagree with the
+  ledger.
+- `status` (`ok` / `warning` / `over` / `unplanned`) and a clamped `ratio` are
+  computed here too, so the component only picks a class and a width.
+
+### UI
+
+| Piece | Kind | Notes |
+| --- | --- | --- |
+| `BudgetTable` | server | One section: the five columns, the per-section footer, and the consumption bar. |
+| `BudgetRowForm` | client | The editable planned amount for one row — `useActionState` for the pending flag and the per-row error. |
+| `CopyBudgetsButton` | client | Seeds the month from the previous one and reports the count. |
+
+- **The table is the editor.** No separate "create budget" screen: a budget is a
+  single number, and a whole form for it would be ceremony. Each row's form
+  lives inside its own `<td>`, so unlike the Phase 3 settings rows it needs no
+  `form` attribute gymnastics.
+- **An emptied field clears the target; `0` is stored as a real target.**
+  "Spend nothing here" and "don't plan this" are different intentions, so one
+  input value cannot mean both. The page lead says so explicitly, since the
+  behaviour is otherwise invisible.
+- **`FormState` gained an optional `message`** for the copy result. A copy of
+  nothing and a copy of everything look identical on the re-rendered page;
+  every other action in the app is self-evident on success and sets nothing.
+- The bar's percentage label sits **beside** the track, not inside it, so it
+  stays legible at any fill width in either theme.
+
+**`Placeholder` and its stylesheet were deleted** — `/budget` was their last
+user, which is what PLAN.md said would happen.
+
+### How Phase 6 was verified
+
+```text
+npx tsc --noEmit         clean
+npx biome check src/     clean — same 4 pre-existing warnings
+npm run build            10 routes
+```
+
+Then **60 of 60** end-to-end checks against the running app, driving the real
+budget forms *and* the real transaction form over HTTP, asserting against
+Firestore for every stateful claim.
+
+| Area | Verified |
+| --- | --- |
+| Empty plan | A row per target, all unplanned; **rendering the page writes nothing** |
+| Set | A saldo target of 1200 and a category target of 300, written under the derived ids with the right `scope` — two documents, no more |
+| Upsert | Re-saving the saldo at 1000 replaced the amount and left the count at two; the row came back carrying its budget id |
+| Independence | R$ 480 real (R$ 960 total) on "Mercado e feira"/"Essenciais" consumed **48% of the saldo's own 1000** while the category showed **acima do planejado** against its 300 — the two axes measured separately, from one transaction |
+| Expense-only | A R$ 5.000 receita in the same month changed neither row |
+| Real vs total | The row leads with 480,00 and carries 960,00 beneath |
+| Remaining | −180,00 on the category |
+| Clear vs zero | An empty field deleted the document and left the other target alone; `0` was stored as a target, and a zero target with spend reads as over budget |
+| Validation | −50 refused ("cannot be negative"), `"abc"` refused ("must be a number"), an unknown `targetId` refused ("was not found") — and nothing written in any of the three cases |
+| Copy | An unplanned target copied at its source amount; an already-planned one **not overwritten**; the result reported; a second press duplicated nothing |
+| Isolation | The next month shows neither the spend nor the targets; `?month=banana` falls back instead of erroring |
+
+The harness deleted its two transactions **through the delete action** so the
+balances unwound, removed all five budget documents, and re-asserted the account
+and saldo against their pre-run figures. Firestore ended identical to its
+pre-run state.
+
+One assertion failed on the first run and was the *harness* being wrong: it
+expected the hidden `budgetId` of an unplanned row to be absent, where React
+renders `value=""`. Confirmed against the actual HTML before changing anything —
+the third time in this project that an HTML-shaped assumption, not the code, was
+at fault.
+
+### Left open after Phase 6
+
+- **Nothing archives a stale budget.** Archiving a saldo stops `copyBudgets`
+  from carrying its target forward, but the current month's budget document
+  survives, and the row stays visible because it carries money. That is the
+  intended reading — the plan for a month that already happened shouldn't
+  silently change — but there is no way to clean up such a row except emptying
+  its field, and an archived target's row is still editable.
+- **The two section footers invite a comparison they don't support.** They are
+  labelled per-section and the page lead says the axes don't reconcile, but two
+  "Total" rows with different numbers on one screen is the kind of thing worth
+  re-reading once there is real data in it.
+- **Still no test framework.** `buildBudgetRows` is the most logic-dense pure
+  function in the app — status thresholds, row inclusion, three different totals
+  — and it is covered only through the UI. Vitest over `src/lib` remains the
+  cheap, high-value addition flagged since Phase 1.
+- **Firestore is back to the Phase 3 seed** with zero transactions and zero
+  budgets, so the app is ready to be used for real.

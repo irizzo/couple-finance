@@ -22,6 +22,12 @@ export interface FormState {
 	 * their input intact instead of blanking out.
 	 */
 	values?: Record<string, string>;
+	/**
+	 * Set only when a success is worth reporting — "3 copiados, 1 ignorado". Most
+	 * actions say nothing on success, because the re-rendered page already shows
+	 * what happened; a bulk action's outcome isn't visible from its own result.
+	 */
+	message?: string;
 }
 
 export const IDLE_FORM_STATE: FormState = { status: "idle" };

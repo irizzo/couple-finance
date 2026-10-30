@@ -43,6 +43,26 @@ export interface Category {
 	archived: boolean;
 }
 
+export type BudgetScope = "saldo" | "category";
+
+/**
+ * A planned amount for one month on one target.
+ *
+ * `scope` + `targetId` rather than nullable `saldoId` / `categoryId` columns:
+ * since saldo and category are independent tags, the two dimensions are siblings
+ * and one discriminated pair says that plainly. Each month stands alone — there
+ * is no "recurring budget" record, only `copyBudgets` to seed the next one.
+ */
+export interface Budget {
+	id: string;
+	month: string; // ISO "YYYY-MM"
+	scope: BudgetScope;
+	targetId: string; // a saldoId or a categoryId, per `scope`
+	plannedAmount: number;
+}
+
+export type SetBudgetInput = Omit<Budget, "id">;
+
 export type CreateAccountInput = Omit<
 	Account,
 	"id" | "totalBalance" | "realBalance" | "archived"

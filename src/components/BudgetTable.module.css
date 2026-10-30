@@ -1,0 +1,167 @@
+/* One month's plan for one dimension. Two of these sit side by side on
+   /budget — por saldo and por categoria — so everything here is scoped to a
+   section rather than to the page. */
+
+.section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.title {
+	font-size: 1.0625rem;
+	font-weight: 600;
+}
+
+.tableWrap {
+	overflow-x: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9375rem;
+}
+
+.table th {
+	padding: var(--space-3) var(--space-4);
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--muted);
+	text-align: left;
+	white-space: nowrap;
+}
+
+.table td {
+	padding: var(--space-3) var(--space-4);
+	border-bottom: 1px solid var(--border);
+	vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+.table tfoot th,
+.table tfoot td {
+	padding: var(--space-3) var(--space-4);
+	border-top: 1px solid var(--border-strong);
+	border-bottom: none;
+	background: var(--surface);
+	text-transform: none;
+	font-size: 0.9375rem;
+	letter-spacing: normal;
+	color: inherit;
+}
+
+.target {
+	font-weight: 500;
+}
+
+.archivedHint {
+	color: var(--muted);
+	font-size: 0.75rem;
+	font-weight: 400;
+}
+
+.numeric {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.footTotal {
+	font-variant-numeric: tabular-nums;
+}
+
+/* The planned figure is edited in place: the table *is* the budget editor. */
+.plannedForm {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+}
+
+.plannedInput {
+	width: 7.5rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.rowError {
+	color: var(--negative);
+	font-size: 0.8125rem;
+}
+
+.noPlan {
+	color: var(--muted);
+}
+
+/* Consumption bar. The label sits beside the track rather than inside it, so it
+   stays legible whatever the fill width and whatever the theme. */
+.bar {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-width: 9rem;
+}
+
+.barTrack {
+	flex: 1;
+	height: 0.5rem;
+	border-radius: 999px;
+	background: var(--accent-soft);
+	overflow: hidden;
+}
+
+.barFill {
+	display: block;
+	height: 100%;
+	border-radius: 999px;
+}
+
+.barLabel {
+	font-size: 0.75rem;
+	color: var(--muted);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.ok {
+	background: var(--positive);
+}
+
+.warning {
+	background: var(--warning);
+}
+
+.over {
+	background: var(--negative);
+}
+
+.unplanned {
+	background: var(--border-strong);
+}
+
+.empty {
+	padding: var(--space-6) var(--space-4);
+	text-align: center;
+	color: var(--muted);
+}
+
+.copyForm {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
+.copyResult {
+	font-size: 0.8125rem;
+	color: var(--muted);
+}

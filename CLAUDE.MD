@@ -11,13 +11,14 @@ The main features I want achieve in this project are:
 
 [X] CRUD all entities described at `src/types/index.ts`;
 [X] See all the monthly transactions;
-[] Plan the monthly budget by "Saldos" and "Categories";
+[X] Plan the monthly budget by "Saldos" and "Categories";
 [X] Have a way of duplicating transactions (so for not fixed but recurrent transactions I can just copy them instead of filling the information from scratch.);
 
 ## DATA LAYER
 
-The Firestore data layer is built. Entities live in four root collections — `accounts`,
-`saldos`, `categories`, `transactions` — and are reached only through Server Actions.
+The Firestore data layer is built. Entities live in five root collections — `accounts`,
+`saldos`, `categories`, `transactions`, `budgets` — and are reached only through Server
+Actions.
 
 ### Files
 
@@ -28,7 +29,7 @@ The Firestore data layer is built. Entities live in four root collections — `a
 | `src/database/entities.ts` | Shared CRUD behind accounts/saldos/categories. Two shapes: `createNamedEntity`/`updateNamedEntity` (name only — categories) and `createBalanceEntity`/`updateBalanceEntity` (name + two balances — accounts and saldos, which are structurally identical, so their logic exists once). Also `assertActive(collection, id, label)`, the shared exists-and-not-archived guard. |
 | `src/database/validators.ts` | Hand-rolled validation primitives, no dependency. |
 | `src/database/result.ts` | The `ActionResult<T>` envelope. |
-| `src/database/collections.ts` | Collection names and the `withId` snapshot mapper. |
+| `src/database/collections.ts` | Collection names, the `withId` snapshot mapper, and `budgetDocId` — the one derived document id in the app. |
 
 `"use server"` files may only export async functions, so types, constants and sync
 helpers have to stay in the non-action modules above.
@@ -60,6 +61,19 @@ helpers have to stay in the non-action modules above.
 * **Saldo and category are independent tags.** A transaction carries both, but
   any category may pair with any saldo — neither nests inside the other. Each
   reference is validated only for existence and active status on write.
+* **Budgets are the exception to both rules above.** One document per
+  `(month, scope, targetId)`, with the id *derived* from those three
+  (`budgetDocId`) so a target can only be planned once per month — the upsert
+  needs no duplicate query and no transaction, and a double submit is
+  idempotent. They also **hard-delete**: nothing references a budget, so soft
+  delete would add a field no one reads. Each month stands alone; `copyBudgets`
+  seeds the next one and is **additive** — it never overwrites a figure already
+  set, nor copies a target whose saldo or category has been archived.
+* **Budgets measure expenses only, against `realAmount`.** Netting a receita
+  into a target would let a salary deposit silently pay for an overrun. And the
+  saldo and category tables are **not reconciled**: they sum the same
+  transactions along different axes, so each total is right for its own axis and
+  the two are not expected to agree.
 * `realAmount` may never exceed `totalAmount`; money is rounded to 2 decimals on
   every balance write.
 
@@ -133,11 +147,22 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
 * **A write redirects to the month of the record, not the month of the form.**
   They differ whenever you backdate or duplicate forward, and landing on a month
   that doesn't contain what you just saved reads as a failure.
+* **Revalidate as narrowly as the write reaches.** A budget is a plan and moves
+  no balance, so `/budget` is enough; a transaction moves two balances that are
+  rendered on three screens, so it takes `("/", "layout")`.
+* **A single-number record is edited in its own table row**, not on a dedicated
+  screen — the budget table *is* the budget editor. An emptied field clears the
+  record rather than storing zero, because zero is a real target ("spend nothing
+  here") and the two must stay distinguishable.
+* **Totals are computed in `src/lib`, not in JSX.** A footer that re-derives a
+  sum duplicates the rule about which rows are included in it; the pure function
+  returns the rows *and* their totals together.
 
 ## STATUS
 
-**Data layer** — CRUD is done for all four entities, including
-`listTransactions({from, to, ...})` for the monthly view.
+**Data layer** — CRUD is done for all five collections, including
+`listTransactions({from, to, ...})` for the monthly view and
+`setBudget`/`listBudgets`/`deleteBudget`/`copyBudgets` for the plan.
 `duplicateTransaction(id, overrides)` also exists and works, but **nothing calls
 it**: duplication is done by prefilling the create form instead (see below), so
 nothing is written until the amount has been checked.
@@ -155,13 +180,21 @@ nothing is written until the amount has been checked.
 * **Duplication works via `/transactions/new?from=<id>`.** Every field is
   prefilled and the date resets, so a recurrent-but-variable expense only needs
   its amount adjusted before saving.
-* `/budget` resolves but still renders a placeholder.
+* **Budget planning works.** `/budget?month=YYYY-MM` plans the month over
+  saldos and over categories independently, each a flat table editable in
+  place, with planned / gasto / restante / consumption bar, per-section totals,
+  and a "copy last month" button.
 
-All verified end-to-end against real Firestore, including the split-bill
-arithmetic above.
+All four goals are met, and all of it is verified end-to-end against real
+Firestore — including the split-bill arithmetic above and an overrun against a
+category target.
 
-**Still open** — monthly budget planning by saldo/category, which also needs a
-new `budgets` collection.
+**Still open** — polish only: the empty/error-state audit and dropping the
+unused `firebase` client dependency (Phase 7). Plus the standing caveat below.
+
+**No authentication exists.** Every Server Action is reachable by anyone who can
+reach the app, and the Admin SDK bypasses Firestore security rules by design.
+That is fine on `localhost` and must be fixed before any public deploy.
 
 See [PLAN.md](PLAN.md) for the phased plan and
 [IMPLEMENTATION.MD](IMPLEMENTATION.MD) for what each finished phase actually

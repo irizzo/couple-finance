@@ -2,6 +2,8 @@ type FieldErrors = Record<string, string>;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_DATE_LENGTH = 10;
+/** The month range is spelled out, so `2026-13` and `2026-00` are rejected. */
+const ISO_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 /** Currency is stored with two decimal places. */
 const CENTS_PER_UNIT = 100;
 
@@ -37,6 +39,18 @@ export function isoDate(value: unknown): string | null {
 		parsed.toISOString().slice(0, ISO_DATE_LENGTH) !== value
 	) {
 		return "is not a real date";
+	}
+	return null;
+}
+
+/**
+ * A budget month. No `Date` round-trip like `isoDate` needs: every `YYYY-MM`
+ * that matches the pattern is a real month, there being no equivalent of
+ * February 30th.
+ */
+export function isoMonth(value: unknown): string | null {
+	if (typeof value !== "string" || !ISO_MONTH.test(value)) {
+		return "must be a month in the YYYY-MM format";
 	}
 	return null;
 }
