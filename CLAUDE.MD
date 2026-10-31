@@ -103,7 +103,7 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
 
 | Layer | Purpose |
 | --- | --- |
-| `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`), transaction aggregation (`rollup.ts`). Sync and Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. |
+| `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`), transaction aggregation (`rollup.ts`). Sync and Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. Each has a `*.spec.ts` beside it. |
 | `src/app/_actions/*.ts` | Form adapters. The data-layer actions take typed objects, but `useActionState` needs `(prevState, formData)`. Each adapter parses `FormData`, calls the action, calls `revalidatePath`, and returns a `FormState`. `form-state.ts` holds the shared shape and is deliberately *not* `"use server"`. |
 | `src/components/*.tsx` | Shared presentation — form primitives, tables, navigation. |
 
@@ -123,6 +123,9 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
 * **Local time for "now", UTC for arithmetic.** `currentMonth()`/`today()` read
   local date parts — in UTC−3, `toISOString()` would report tomorrow after 21:00.
   Month arithmetic pins to `Date.UTC`, where no DST shift can roll a boundary.
+  Every caller is a Server Component, so "local" means **the server process's
+  timezone**, not the viewer's. The specs pin `TZ=America/Sao_Paulo`; a deploy
+  has to as well (see Still open).
 * **Design tokens, not literal values.** Colour, spacing and radius all come from
   the custom properties in `src/app/globals.css`, defined in *both* the light and
   dark block. Money uses `tabular-nums` so columns align on the decimal point.
@@ -255,6 +258,14 @@ deliberate, not unfinished work:
 Biome does not police `package.json`, `package-lock.json` or `.claude/`: other
 tools rewrite those.
 
+`npm test` runs Vitest over `src/**/*.spec.ts`, which today means `src/lib`.
+Specs sit beside the module they cover and need no mocks, since nothing in
+`src/lib` reaches Firestore. `vitest.config.mts` takes the `@/*` alias from
+tsconfig (`resolve.tsconfigPaths`) and pins `TZ`. Two Biome overrides exist for
+the tests: `noMagicNumbers` is off in `*.spec.ts`, where literal amounts are the
+fixture, and the config may default-export, like `next.config.ts`. A change to
+a money or month rule comes with a spec.
+
 ### Still open
 
 **No authentication exists.** Every Server Action is reachable by anyone who can
@@ -264,9 +275,13 @@ is the only open item that blocks anything.
 
 Also: deploying needs `serviceAccountKey.json` supplied as an env var, since
 `src/database/firebase.config.js` imports it from disk and the file is
-gitignored. There is no test framework — `src/lib/rollup.ts` and
-`src/lib/month.ts` are pure and would be cheap to cover. And `error.tsx` has
-never been seen rendered, only proven reachable; it needs one look in a browser.
+gitignored. It also needs the process timezone set to `America/Sao_Paulo` (or
+`month.ts` pinned to it): on a UTC host `today()` runs a day ahead every evening
+from 21:00, and `currentMonth()` a month ahead on the last evening of each month.
+Next 16.2.9 carries published advisories, among them a middleware/proxy bypass
+on Turbopack, so it must be upgraded before any gate relies on middleware. And
+`error.tsx` has never been seen rendered, only proven reachable; it needs one
+look in a browser.
 
 See [PLAN.md](PLAN.md) for the phased plan and
 [IMPLEMENTATION.MD](IMPLEMENTATION.MD) for what each finished phase actually
@@ -275,8 +290,9 @@ produced, including where it departed from the plan.
 **Improvement track, in progress.** [IMPROVEMENT_PLAN.MD](IMPROVEMENT_PLAN.MD)
 schedules the items above, plus an entity `description` field and four defects
 (G1–G4). [IMPROVMENT_IMPLEMENTATION.MD](IMPROVMENT_IMPLEMENTATION.MD) records
-each phase as it lands. Phases A–C are done. `description` is stored,
+each phase as it lands. Phases A–D are done. `description` is stored,
 validated, editable on the settings screens and shown on `/budget`. The four
 defects are fixed: archived budget rows are read-only, entity writes revalidate
 the layout, `copyBudgets` checks per scope, and orphaned plans are surfaced.
-Next is Phase D, tests over `src/lib`.
+`src/lib` is covered by 69 Vitest specs (`npm test`). Next is Phase E, the auth
+gate and the deployment key.

@@ -36,11 +36,21 @@
 	},
 	"overrides": [
 		{
-			"includes": ["next.config.ts"],
+			"includes": ["next.config.ts", "vitest.config.mts"],
 			"linter": {
 				"rules": {
 					"style": {
 						"noDefaultExport": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["**/*.spec.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noMagicNumbers": "off"
 					}
 				}
 			}

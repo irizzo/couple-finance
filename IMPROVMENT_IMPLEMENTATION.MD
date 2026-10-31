@@ -14,7 +14,7 @@ this file is the history of the improvement track.
 | A — `description` through the data layer | **Done** |
 | B — `description` in the UI | **Done** |
 | C — The four defects (G1–G4) | **Done** |
-| D — Tests over `src/lib` | Not started |
+| D — Tests over `src/lib` | **Done** |
 | E — The auth gate, and the deployment key | Not started |
 
 ---
@@ -440,3 +440,163 @@ and `plannedAmount` only as a hidden empty field".
   is ever hard-deleted from the console, its budget documents have to be
   removed there too. Soft delete makes this unreachable through the app.
 - **`scripts/backfill-descriptions.mts` stays** until the end of Phase E.
+
+---
+
+## Phase D — Tests over `src/lib`
+
+`src/lib` now has **69 specs** in three files, each beside the module it covers,
+run by `npm test`. No application code changed. Nothing outside the specs, the
+config and the tooling files was edited. No spec needed a mock, because nothing
+they reach touches Firestore.
+
+### Changes in Phase D
+
+**Tooling**
+
+- `vitest@^4.1.12` is the one new dev dependency, which brings Vite 8.3.5 with
+  it. `"test": "vitest run"` is the one new script.
+- **[vitest.config.mts](vitest.config.mts)** sets three things:
+  - `resolve.tsconfigPaths: true`. Vite 8 reads `@/*` from
+    [tsconfig.json](tsconfig.json) itself, so the alias is defined once, not
+    twice.
+  - `include: ["src/**/*.spec.ts"]`.
+  - `env: { TZ: "America/Sao_Paulo" }`. See the timezone pin below.
+- **[biome.json](biome.json)** gained two override entries:
+  - `vitest.config.mts` joins `next.config.ts` in being allowed a default
+    export, which a config file needs.
+  - `**/*.spec.ts` turns off `noMagicNumbers`. The R$ 90 and R$ 45 in a spec
+    *are* the fixture, and naming every amount would hide what is being
+    asserted.
+
+  The codebase's only inline `biome-ignore` is on `TZ` in the config. It is an
+  environment variable's name, so it cannot be camelCase.
+
+**The specs**
+
+| File | Specs | What they pin |
+| --- | --- | --- |
+| [month.spec.ts](src/lib/month.spec.ts) | 26 | `currentMonth` and `today` at 22:00 on 31 October in São Paulo, which is already November in UTC, read October and the 31st. `resolveMonth` passes `2027-02` through. It falls back on `2026-13`, `2026-00`, `""`, `undefined`, `null`, `2026-1`, `" 2026-10"`, and on an array (the shape `?month=a&month=b` arrives in). `shiftMonth` crosses the year boundary both ways, moves by more than a year and by 0, and throws on a malformed month. `monthBounds` handles February in 2028, 2027, 2100 and 2000, a 30-day month, and December. `formatMonthLabel` capitalizes, including `Março`. `formatDayMonth` drops the year. |
+| [money.spec.ts](src/lib/money.spec.ts) | 17 | `parseAmount` reads `90.5`, `1.234,56`, `90,5`, `" 1 234,56 "`, `0`, and `33.333` as `33.33`. A lone dot is the decimal point: `1.234` → `1.23`. `""`, whitespace, `null`, `abc`, `1,2,3`, `Infinity` and a `File` all give `NaN`, never 0. `round2` absorbs the drift of ten `0.1` adds and of `0.1 + 0.2`. `formatCurrency` keeps its non-breaking space. |
+| [rollup.spec.ts](src/lib/rollup.spec.ts) | 26 | `monthSummary` on the canonical R$ 90 / R$ 45 split, netted against income and rounded. A target is measured by `real`, not `total`, and a receita does not reduce it. Status, ratio and remaining against R$ 100 at 0, 79.99, exactly 80, 100, 100.01 and 250 (the ratio clamps). A zero target is over on R$ 0,01 and at its limit with no spend. Unplanned spend has no remainder. Name, description and budget id are copied onto the row. An archived target is dropped when empty and kept with spend or with only a plan; an empty active target stays. The `(removido)` row appears for spend, for a plan, and for both, with two deleted targets collapsed onto one row. It is absent when nothing is orphaned, and the other scope's budgets do not trigger it. `section.remaining` sums planned rows only, and an overrun offsets it. Both sections' spend equals the ledger's, and each plan total equals its own scope's budgets. |
+
+**The timezone pin.** Every caller of `currentMonth` and `today` is a Server
+Component: [page.tsx](src/app/page.tsx), [MonthNav](src/components/MonthNav.tsx)
+and [transactions/new](src/app/transactions/new/page.tsx). Their "local time" is
+therefore the server process's, not the viewer's. The config pins `TZ` to the
+users' zone so the clock specs mean the same thing on any machine. Without the
+pin they fail on a UTC machine (checked below). [CLAUDE.MD](CLAUDE.MD)'s "local
+time" convention now says whose local time it is.
+
+### Departures from the plan in Phase D
+
+- **Vitest 4, not the current 5.** Vitest 5.0.5 declares `@types/node`
+  `^22 || >=24` as a peer. This project pins `@types/node ^20`, so npm refused
+  the install. Taking 5 would have meant a second dev-dependency change. 4.1.12
+  accepts `^20` and keeps the plan's "single dev dependency".
+- **`vitest.config.mts`, not `.ts`.** The package has no `"type": "module"`.
+  Vite warned that an ESM `.ts` config gets loaded as CommonJS, which its
+  upcoming native config loader will not do. `.mts` marks the file as ESM
+  without changing how anything else loads, and tsconfig already includes
+  `**/*.mts`.
+- **No second copy of the alias.** The plan said to teach Vitest the `@/*`
+  alias. Vite 8 can read it from tsconfig, so the config points at the existing
+  definition instead.
+- **Two Biome overrides the plan did not foresee.** "Formatted like everything
+  else" holds: tabs, sorted imports, every rule but one. The exceptions are
+  `noMagicNumbers` (96 fixture literals) and `noDefaultExport` on the config,
+  each scoped to exactly those files. The baseline stays at 0 errors and 4
+  warnings.
+- **More cases than the plan's table.** The extras are:
+  - local-vs-UTC `currentMonth`;
+  - `formatMonthLabel` under UTC−3;
+  - `real` versus `total`;
+  - a zero target with no spend;
+  - the section totals agreeing with the ledger.
+
+  Each is a rule already stated in a doc comment or in [CLAUDE.MD](CLAUDE.MD)
+  that nothing was checking.
+- **`statusFor` and `ratioFor` are tested through `buildBudgetRows`.** They
+  stay private, and the specs assert the rows they produce.
+
+### How Phase D was verified
+
+```text
+npm test                 3 files, 69 passed
+npx tsc --noEmit         clean (specs and config included)
+npm run lint             0 errors, 4 accepted warnings
+npm run build            10 routes
+```
+
+**The specs were mutation-checked.** 26 deliberate breakages were made, one at
+a time, on a scratch copy of `src/lib`, `src/types` and `validators.ts`. Each
+one turned at least one spec red, so none survived. Some of them, with the
+number of specs that failed:
+
+| Breakage | Failed |
+| --- | --- |
+| Exactly 80% no longer a warning | 1 |
+| Ratio no longer clamped | 1 |
+| Status measured on `total` instead of `real` | 1 |
+| Receitas counted as spend | 2 |
+| Budgets not filtered by scope | 2 |
+| G4 reverted: orphaned plan dropped | 3 |
+| G4 reverted: orphaned spend dropped | 3 |
+| Section remainder charged with unplanned spend | 1 |
+| `currentMonth` reading UTC | 9 |
+| Leap years ignored | 2 |
+| `formatMonthLabel` not pinned to UTC | 3 |
+| An empty field parsed as 0 | 4 |
+| `round2` made a no-op | 7 |
+
+**The timezone pin was checked both ways.** With `TZ=UTC` in the shell, the
+suite still passes 69 of 69. With the pin removed from the config and
+`TZ=UTC` still set, the clock specs fail, because `currentMonth` reads November.
+
+There was no end-to-end run in this phase and Firestore was not touched. No
+runtime code changed, so Phase C's 41 of 41 still describes the app.
+
+### Left open after Phase D
+
+- **A UTC server would get "now" wrong.** This follows from the timezone pin
+  above. On a host left at UTC, `today()` would run a day ahead every evening
+  from 21:00 São Paulo time. On the last evening of each month,
+  `currentMonth()` would run a month ahead too: `/` would redirect to next
+  month, `MonthNav` would call next month "current", and a new transaction
+  would default to tomorrow. There are two ways to fix it, and choosing one
+  belongs to the deployment:
+  - run the process with `TZ=America/Sao_Paulo`;
+  - have both helpers format with
+    `Intl.DateTimeFormat(…, { timeZone: "America/Sao_Paulo" })`.
+- **`@types/node` is `^20`, but the runtime is Node 24.** That gap is what kept
+  Vitest at 4. Raising the types to `^24` and Vitest to 5 is a small, separate
+  change.
+- **`round2` rounds the stored binary value, not the decimal one.**
+  `round2(1.005)` is `1`, because `1.005` is stored as `1.00499…`. No form can
+  reach this, since every money input has `step="0.01"`, so it is noted and not
+  pinned by a spec.
+- **The browser session is still owed:** Phase B's visuals, `error.tsx`, and the
+  two-tab staleness check.
+- **`scripts/backfill-descriptions.mts` stays** until the end of Phase E.
+
+### Found ahead of Phase E
+
+- **Next 16.2.9 has published advisories that bear directly on the gate.**
+  `npm audit` ran when Vitest was added, and none of its 9 findings come from
+  Vitest. Among them:
+  - "Middleware / Proxy bypass in App Router applications using Turbopack and
+    single locale", fixed in 16.2.11;
+  - "Unauthenticated disclosure of internal Server Function endpoints", also
+    fixed in 16.2.11;
+  - RCEs in the image optimizer and in `use cache`, open through 16.4.0.
+
+  `npm audit` names 16.4.3 as the fix. A middleware gate on 16.2.9 would sit
+  behind a published bypass. `next` is pinned exactly, so the upgrade is a
+  deliberate edit.
+- **`middleware.ts` is `proxy.ts` in Next 16.** The bundled upgrade guide
+  deprecates the `middleware` file name and export in favour of `proxy`, which
+  always runs on Node. The plan's file names predate the rename.
+- **The bundled docs back `requireSession()`.** `proxy.md` says a matcher that
+  excludes a path also skips the Server Function calls on that path, and
+  advises: "Always verify authentication and authorization inside each Server
+  Function rather than relying on Proxy alone."

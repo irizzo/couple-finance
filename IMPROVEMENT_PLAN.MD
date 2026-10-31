@@ -11,7 +11,7 @@
 | A — `description` through the data layer | **Done**: see [IMPROVMENT_IMPLEMENTATION.MD](IMPROVMENT_IMPLEMENTATION.MD#phase-a--description-through-the-data-layer) |
 | B — `description` in the UI | **Done**: see [IMPROVMENT_IMPLEMENTATION.MD](IMPROVMENT_IMPLEMENTATION.MD#phase-b--description-in-the-ui) |
 | C — The four defects (G1–G4) | **Done**: see [IMPROVMENT_IMPLEMENTATION.MD](IMPROVMENT_IMPLEMENTATION.MD#phase-c--the-four-defects) |
-| D — Tests over `src/lib` | Not started |
+| D — Tests over `src/lib` | **Done**: see [IMPROVMENT_IMPLEMENTATION.MD](IMPROVMENT_IMPLEMENTATION.MD#phase-d--tests-over-srclib) |
 | E — The auth gate, and the deployment key | Not started |
 
 ## Context
