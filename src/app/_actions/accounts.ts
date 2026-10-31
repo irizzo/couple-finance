@@ -22,9 +22,12 @@ import {
  *
  * `revalidatePath` lives here rather than in `src/database` so the data layer
  * never learns route names.
+ *
+ * Every write revalidates `("/", "layout")`, not just `/settings/accounts`: an
+ * entity's name, description and archived state are rendered on every screen —
+ * the ledger's columns and filters, the transaction form's selects, the budget
+ * rows — so a rename or an archive reaches all of them.
  */
-
-const PATH = "/settings/accounts";
 
 export async function createAccountForm(
 	_previous: FormState,
@@ -36,7 +39,7 @@ export async function createAccountForm(
 		initialAmount: parseAmount(formData.get("initialAmount")),
 	});
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result, formValues(formData));
 }
@@ -52,7 +55,7 @@ export async function updateAccountForm(
 		initialAmount: parseAmount(formData.get("initialAmount")),
 	});
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result, formValues(formData));
 }
@@ -64,7 +67,7 @@ export async function archiveAccountForm(
 ): Promise<FormState> {
 	const result = await archiveAccount(textField(formData, "id"));
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result);
 }
@@ -75,7 +78,7 @@ export async function unarchiveAccountForm(
 ): Promise<FormState> {
 	const result = await unarchiveAccount(textField(formData, "id"));
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result);
 }

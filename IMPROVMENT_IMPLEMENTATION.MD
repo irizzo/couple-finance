@@ -13,7 +13,7 @@ this file is the history of the improvement track.
 | --- | --- |
 | A — `description` through the data layer | **Done** |
 | B — `description` in the UI | **Done** |
-| C — The four defects (G1–G4) | Not started |
+| C — The four defects (G1–G4) | **Done** |
 | D — Tests over `src/lib` | Not started |
 | E — The auth gate, and the deployment key | Not started |
 
@@ -298,3 +298,145 @@ left it in place.
   one browser session. Both can be looked at together.
 - **`scripts/backfill-descriptions.mts` stays** until the end of Phase E, per
   the standing decision.
+
+---
+
+## Phase C — The four defects
+
+G1–G4 are all fixed. None changes the data model. G3 and G4 change no visible
+behaviour on today's data, G1 changes one cell on archived budget rows, and G2
+changes no visible behaviour on the current Next version. Each is described
+below by what was actually wrong.
+
+### G1 — an archived budget row offered an input that could not save
+
+**[BudgetRowForm](src/components/BudgetRowForm.tsx)** gained an `editable`
+prop. A read-only row renders exactly what the data layer permits:
+
+| Row | Planned cell |
+| --- | --- |
+| Active target | The input and "Salvar", unchanged |
+| Archived, with a plan | The figure as text, and one **"Limpar"** button |
+| Archived, no plan (shown only for its spend) | `—` |
+| `(removido)` (see G4) | The figure as text, or `—`. No button: there is no single budget document behind a sum. |
+
+"Limpar" submits a hidden empty `plannedAmount` plus the `budgetId`. That is the
+adapter's existing "remove this target" signal, which calls `deleteBudget`, and
+`deleteBudget` has no active check. It goes through `ConfirmSubmit`. Once
+removed, an archived target cannot be planned again in that month without
+restoring it first, so it counts as a hard-to-undo action. The confirm text says
+"o alvo está arquivado", which avoids the saldo/categoria gender agreement.
+`ConfirmSubmit`'s doc comment now lists it as the third such path.
+
+**[BudgetTable](src/components/BudgetTable.tsx)** lost its own branch. It used
+to special-case `row.targetId === ""` with a `—`. It now always renders
+`BudgetRowForm` with `editable={!row.archived && row.targetId !== ""}`, and
+every read-only case is decided in one place.
+
+### G2 — settings writes revalidated one route
+
+All **12** write adapters across [accounts.ts](src/app/_actions/accounts.ts),
+[saldos.ts](src/app/_actions/saldos.ts) and
+[categories.ts](src/app/_actions/categories.ts) now call
+`revalidatePath("/", "layout")`. That is create, update, archive and unarchive
+in each file. The `PATH` constants are gone. The reason is written once, in the
+`accounts.ts` header, and the other two files point at it. The
+[budgets.ts](src/app/_actions/budgets.ts) header now contrasts budgets with
+"a transaction or entity write". The grep afterwards: 12 entity calls and 3
+transaction calls use the layout, and only the 3 budget calls stay narrow.
+
+**What this fixes, honestly stated.** Next 16's bundled docs
+(`node_modules/next/dist/docs/…/revalidatePath.md`) say that a Server Function's
+`revalidatePath` *currently* "causes all previously visited pages to refresh
+when navigated to again. This behavior is temporary." Every page here is also
+dynamic, so the server renders fresh on each request anyway. The narrow calls
+therefore worked **by accident**. `("/", "layout")` is the documented way to
+purge the client cache, so the app now depends on the contract, not on behaviour
+Next has said it will remove. This is a latent bug fixed, not a visible one.
+[CLAUDE.MD](CLAUDE.MD) now warns against relying on the temporary behaviour.
+
+It also closes the item [IMPLEMENTATION.MD](IMPLEMENTATION.MD) carried from
+Phase 3 to Phase 5 ("the settings adapters may need widening"). That historical
+log is left as written.
+
+### G3 — `copyBudgets` ignored `scope` when checking the target was active
+
+[budgets.actions.ts](src/database/budgets.actions.ts) now has a small
+`activeIds(docs)` helper and a `Record<BudgetScope, Set<string>>`. Each source
+budget is checked only against the collection its own `scope` names, the same
+lookup `setBudget` makes through `collectionFor`. The lookup is
+`activeByScope[budget.scope]?.has(…)`. The `?.` is there because `withId` is a
+blind cast, so a stored budget with an unknown scope is skipped rather than
+crashing the whole copy.
+
+### G4 — an orphaned plan vanished
+
+[rollup.ts](src/lib/rollup.ts)'s `buildBudgetRows` now sums the planned amounts
+of budgets whose target id is not among the entities, next to the orphaned
+spend it already summed. The trailing `(removido)` row renders when **either**
+is present, not only spend. It carries `planned` (or `null`), `budgetId: null`,
+and `remaining`, `status` and `ratio` computed by the **same** `statusFor` and
+`ratioFor` as every other row. Because of that, `section.planned` and
+`section.remaining` need no special case. The section's planned total now agrees
+with `listBudgets` whatever has been deleted out from under it.
+
+### Departures from the plan in Phase C
+
+- **"All six adapters" became all twelve.** The plan said six, but each of the
+  three files has four writes, and archive and unarchive are exactly the ones
+  the plan names as reaching other screens. All twelve were widened.
+- **Plan check 4 described the filter wrongly.** It expected the ledger's
+  filter select to *drop* an archived category. The filters deliberately list
+  archived entities, with an "(arquivada)" suffix, because a past transaction
+  can still point at them. The check was run as "gains the suffix".
+- **G2 is latent, not visible.** The plan said settings writes left other
+  screens stale. On Next 16.2 they did not, for the two reasons above. The fix
+  still stands, for the reason above.
+- **"Limpar" asks for confirmation.** The plan said "a single Limpar button",
+  and it is one button. It confirms first because the removal cannot be redone
+  while the target stays archived.
+- **The `(removido)` row computes remaining and status like any other row.**
+  The plan only said to fold the plan in. Giving the row the same rules was the
+  way to keep the footer sums free of a special case.
+
+### How Phase C was verified
+
+```text
+npx tsc --noEmit         clean
+npm run lint             0 errors, 4 accepted warnings
+npm run build            10 routes
+```
+
+Then **41 of 41** end-to-end checks against `npm run dev`. They drove the real
+transaction, budget, copy, archive, rename and delete forms over HTTP, and
+asserted every state claim against Firestore. **All of it ran on fixture
+entities**: their own account, two saldos and four categories, in 2031-02 and
+2031-03. The harness refused to start unless both months were empty, and it
+compared every real account, saldo and category byte for byte afterwards.
+
+| Area | Verified |
+| --- | --- |
+| Regression (plan check 7) | The R$ 90 / R$ 45 split bill redirected to its month, wrote one document, moved the account to 910 / 955 and the saldo by −90 / −45. Deleting it from the ledger row brought both back to 1000 / 1000 and 0 / 0. |
+| G1 (plan check 3) | R$ 300 planned on a category, R$ 45 spent, then the category archived. The row stays, marked "(arquivada)". There is no number input, and `plannedAmount` appears only as Limpar's hidden empty field. It shows R$ 300,00 as text and exactly one "Limpar". An active row next to it is still editable. Forcing a figure through the Limpar form is refused with "is archived", and the stored plan is unchanged. Limpar deletes the document. Afterwards the row stays for its R$ 45 spend, and its Planejado cell is a bare `—`. |
+| G2 (plan check 4) | After the archive, the ledger's filter lists the category with "(arquivada)" and the ledger row shows the hint. After a saldo rename from its settings row, the new name appears on the ledger row and on `/budget`. |
+| G4 (plan check 6) | Plans of R$ 200 and R$ 50 on two categories, then the second category document deleted with the Admin SDK. A `(removido)` row appears with **no** orphaned spend. It carries R$ 50,00 and has no input and no Limpar. The category footer reads R$ 250,00, which is the sum of `listBudgets` for that scope. The saldo section has no `(removido)` row. |
+| G3 (plan check 5) | February held six budgets: two saldos, three categories, and one saldo-scoped budget pointing at an active **category** id. That last one is the wrong shape the old union set would have accepted. "Copiar plano" reported "3 valores copiados · 3 já definido(s) ou arquivado(s)". It copied both scopes (S1 1000, S2 400, C4 60). It did not overwrite the R$ 200 already set, skipped the archived category, and skipped the mis-scoped budget. A second press copied 0 and added nothing. |
+| Teardown | Every fixture budget, transaction and entity was deleted. The real documents are byte-identical to before, and nothing remains in 2031. |
+
+The first run was 40 of 41, and the failure was in the **harness**. It
+asserted that the archived row contained no `plannedAmount` input at all, but
+Limpar's form needs a hidden empty one. The rendered row was checked first and
+was exactly what G1 intends, so the assertion was tightened to "no number input,
+and `plannedAmount` only as a hidden empty field".
+
+### Left open after Phase C
+
+- **The plan's two-tab staleness check (plan check 4, as written) needs a
+  browser.** Over HTTP every page is fresh by construction, so the harness can
+  prove the screens agree but not that the client cache was purged. Add it to
+  the single browser session already owed for `error.tsx` and Phase B's visuals.
+- **A historical orphaned budget is visible but cannot be cleaned up from the
+  UI.** By design, `(removido)` has no single document to delete. If a target
+  is ever hard-deleted from the console, its budget documents have to be
+  removed there too. Soft delete makes this unreachable through the app.
+- **`scripts/backfill-descriptions.mts` stays** until the end of Phase E.

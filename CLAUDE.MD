@@ -76,7 +76,18 @@ helpers have to stay in the non-action modules above.
   idempotent. They also **hard-delete**: nothing references a budget, so soft
   delete would add a field no one reads. Each month stands alone; `copyBudgets`
   seeds the next one and is **additive** — it never overwrites a figure already
-  set, nor copies a target whose saldo or category has been archived.
+  set, nor copies a target whose saldo or category has been archived. Each
+  budget is checked against the collection its own `scope` names, never a union
+  of both.
+* **An archived target may not receive a new plan, only have an old one
+  removed.** This is the planning twin of "archived entities reject new
+  postings". `setBudget` calls `assertActive`, and `deleteBudget` deliberately
+  does not. `/budget` therefore renders an archived row's figure as text with a
+  single "Limpar" button, never as an input that could only fail to save.
+* **Money on a target that no longer exists is surfaced, not dropped.** Spend
+  *and* plans pointing at a deleted saldo or category fold into one read-only
+  `(removido)` row. Each section's spend then agrees with the ledger, and its
+  planned total with `listBudgets`.
 * **Budgets measure expenses only, against `realAmount`.** Netting a receita
   into a target would let a salary deposit silently pay for an overrun. And the
   saldo and category tables are **not reconciled**: they sum the same
@@ -159,15 +170,21 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
 * **An entity id in a form travels as a hidden field, not a `.bind`.** Both the
   create and edit routes then share one unbound `FormAction` signature, and a row
   action needs no per-row bound closure.
-* **A transaction write revalidates `("/", "layout")`.** It moves balances on
-  *both* an account and a saldo, and those surface on the settings and budget
-  screens as well as the ledger. Entity writes revalidate only their own route.
+* **Transaction and entity writes revalidate `("/", "layout")`.** A transaction
+  moves balances on *both* an account and a saldo, and those surface on the
+  settings and budget screens as well as the ledger. An entity's name,
+  description and archived state are rendered on every screen: the ledger's
+  columns and filters, the transaction form's selects, and which `/budget` rows
+  are editable. So creating, editing, archiving or restoring one reaches the
+  whole layout, not just its settings route. Do not lean on Next refreshing
+  every visited page after any `revalidatePath`: its docs call that temporary.
 * **A write redirects to the month of the record, not the month of the form.**
   They differ whenever you backdate or duplicate forward, and landing on a month
   that doesn't contain what you just saved reads as a failure.
-* **Revalidate as narrowly as the write reaches.** A budget is a plan and moves
-  no balance, so `/budget` is enough; a transaction moves two balances that are
-  rendered on three screens, so it takes `("/", "layout")`.
+* **Revalidate as narrowly as the write reaches.** A budget is a plan: it moves
+  no balance and is rendered on one page, so `/budget` is enough. That makes it
+  the one genuinely narrow write. Transactions and entities reach every screen,
+  so they take `("/", "layout")`.
 * **A single-number record is edited in its own table row**, not on a dedicated
   screen — the budget table *is* the budget editor. An emptied field clears the
   record rather than storing zero, because zero is a real target ("spend nothing
@@ -258,6 +275,8 @@ produced, including where it departed from the plan.
 **Improvement track, in progress.** [IMPROVEMENT_PLAN.MD](IMPROVEMENT_PLAN.MD)
 schedules the items above, plus an entity `description` field and four defects
 (G1–G4). [IMPROVMENT_IMPLEMENTATION.MD](IMPROVMENT_IMPLEMENTATION.MD) records
-each phase as it lands. Phases A and B are done: `description` is stored,
-validated, editable on the settings screens and shown on `/budget`. Next is
-Phase C, the four defects.
+each phase as it lands. Phases A–C are done. `description` is stored,
+validated, editable on the settings screens and shown on `/budget`. The four
+defects are fixed: archived budget rows are read-only, entity writes revalidate
+the layout, `copyBudgets` checks per scope, and orphaned plans are surfaced.
+Next is Phase D, tests over `src/lib`.

@@ -19,10 +19,9 @@ import {
  * Form adapters for saldos. Structurally identical to the accounts adapters,
  * because Account and Saldo are structurally identical entities — the shared
  * logic they both delegate to already lives in `createBalanceEntity` /
- * `updateBalanceEntity`.
+ * `updateBalanceEntity`. Every write revalidates the whole layout, for the
+ * reason given in `accounts.ts`.
  */
-
-const PATH = "/settings/saldos";
 
 export async function createSaldoForm(
 	_previous: FormState,
@@ -34,7 +33,7 @@ export async function createSaldoForm(
 		initialAmount: parseAmount(formData.get("initialAmount")),
 	});
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result, formValues(formData));
 }
@@ -50,7 +49,7 @@ export async function updateSaldoForm(
 		initialAmount: parseAmount(formData.get("initialAmount")),
 	});
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result, formValues(formData));
 }
@@ -61,7 +60,7 @@ export async function archiveSaldoForm(
 ): Promise<FormState> {
 	const result = await archiveSaldo(textField(formData, "id"));
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result);
 }
@@ -72,7 +71,7 @@ export async function unarchiveSaldoForm(
 ): Promise<FormState> {
 	const result = await unarchiveSaldo(textField(formData, "id"));
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result);
 }

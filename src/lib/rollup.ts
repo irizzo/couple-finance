@@ -216,31 +216,48 @@ export function buildBudgetRows({
 		});
 	}
 
-	// Spend pointing at a target that no longer exists. Soft delete means this
-	// shouldn't happen through the UI, so it is surfaced rather than dropped —
-	// otherwise the section total would silently disagree with the ledger.
+	// Money pointing at a target that no longer exists — spend *or* a plan. Soft
+	// delete means this shouldn't happen through the UI, so it is surfaced rather
+	// than dropped: otherwise the section's spend would silently disagree with the
+	// ledger, and its planned total with `listBudgets`. Everything orphaned lands
+	// on one row with `budgetId: null`, so it stays read-only — there is no single
+	// budget document behind a sum.
 	const known = new Set(entities.map((entity) => entity.id));
-	let orphaned = ZERO;
+	let orphanedSpend = ZERO;
 	for (const [key, pair] of spending) {
 		if (!known.has(key)) {
-			orphaned = {
-				total: orphaned.total + pair.total,
-				real: orphaned.real + pair.real,
+			orphanedSpend = {
+				total: orphanedSpend.total + pair.total,
+				real: orphanedSpend.real + pair.real,
 			};
 		}
 	}
-	if (orphaned.total !== 0 || orphaned.real !== 0) {
+	let orphanedPlan: number | null = null;
+	for (const [targetId, budget] of planned) {
+		if (!known.has(targetId)) {
+			orphanedPlan = (orphanedPlan ?? 0) + budget.plannedAmount;
+		}
+	}
+	if (
+		orphanedPlan !== null ||
+		orphanedSpend.total !== 0 ||
+		orphanedSpend.real !== 0
+	) {
+		const amount = orphanedPlan === null ? null : round2(orphanedPlan);
+		const real = round2(orphanedSpend.real);
 		rows.push({
 			targetId: "",
 			name: "(removido)",
 			description: "",
 			archived: false,
-			planned: null,
+			planned: amount,
 			budgetId: null,
-			spent: rounded(orphaned),
-			remaining: null,
-			status: "unplanned",
-			ratio: 0,
+			spent: rounded(orphanedSpend),
+			// The same rules as any other row, so the section totals below need no
+			// special case for this one.
+			remaining: amount === null ? null : round2(amount - real),
+			status: statusFor(amount, real),
+			ratio: ratioFor(amount, real),
 		});
 	}
 

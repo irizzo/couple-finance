@@ -1,5 +1,6 @@
 "use server";
 
+import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { budgetDocId, COLLECTIONS, withId } from "@/database/collections";
 import db from "@/database/db";
 import { assertActive, notFound, ref } from "@/database/entities";
@@ -39,6 +40,13 @@ function collectionFor(scope: BudgetScope): string {
 
 function labelFor(scope: BudgetScope): string {
 	return scope === "saldo" ? "Saldo" : "Category";
+}
+
+/** The ids in one entity collection that may still receive a plan. */
+function activeIds(docs: QueryDocumentSnapshot[]): Set<string> {
+	return new Set(
+		docs.filter((doc) => doc.data().archived !== true).map((doc) => doc.id),
+	);
 }
 
 /**
@@ -160,12 +168,13 @@ export async function copyBudgets(
 		]);
 
 		// One read of each entity collection, rather than an `assertActive` per
-		// budget: these are small collections and a copy touches all of them.
-		const active = new Set(
-			[...saldos.docs, ...categories.docs]
-				.filter((doc) => doc.data().archived !== true)
-				.map((doc) => doc.id),
-		);
+		// budget: these are small collections and a copy touches all of them. Kept
+		// as one set per scope, so a budget is only ever checked against the
+		// collection its `scope` names — the same lookup `setBudget` makes.
+		const activeByScope: Record<BudgetScope, Set<string>> = {
+			saldo: activeIds(saldos.docs),
+			category: activeIds(categories.docs),
+		};
 		const existing = new Set(target.docs.map((doc) => doc.id));
 
 		const batch = db.batch();
@@ -175,7 +184,12 @@ export async function copyBudgets(
 		for (const doc of source.docs) {
 			const budget = withId<Budget>(doc);
 			const id = budgetDocId({ ...budget, month: toMonth });
-			if (existing.has(id) || !active.has(budget.targetId)) {
+			// `?.` because `withId` is a blind cast: a stored budget with an unknown
+			// scope is skipped rather than crashing the whole copy.
+			if (
+				existing.has(id) ||
+				!activeByScope[budget.scope]?.has(budget.targetId)
+			) {
 				skipped += 1;
 				continue;
 			}

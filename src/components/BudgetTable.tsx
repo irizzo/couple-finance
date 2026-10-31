@@ -112,19 +112,18 @@ export function BudgetTable({
 										)}
 									</td>
 									<td>
-										{row.targetId === "" ? (
-											<span className={styles.noPlan}>—</span>
-										) : (
-											<BudgetRowForm
-												action={setAction}
-												budgetId={row.budgetId ?? ""}
-												month={month}
-												planned={row.planned}
-												scope={section.scope}
-												targetId={row.targetId}
-												targetName={row.name}
-											/>
-										)}
+										<BudgetRowForm
+											action={setAction}
+											budgetId={row.budgetId ?? ""}
+											// An archived target may not receive a new plan, only have
+											// an old one removed; the `(removido)` row has no target.
+											editable={!row.archived && row.targetId !== ""}
+											month={month}
+											planned={row.planned}
+											scope={section.scope}
+											targetId={row.targetId}
+											targetName={row.name}
+										/>
 									</td>
 									<td className={styles.numeric}>
 										<Money secondary={row.spent.total} value={row.spent.real} />

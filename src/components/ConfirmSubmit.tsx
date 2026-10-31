@@ -15,9 +15,10 @@ interface ConfirmSubmitProps {
  * account. Cancelling the dialog calls `preventDefault`, so the form never
  * submits and the action never runs.
  *
- * Only the two hard-to-undo paths use this: transaction delete (money moves and
- * balances unwind) and archive (reversible, but it stops new postings). Ordinary
- * saves use `SubmitButton`.
+ * Only the hard-to-undo paths use this: transaction delete (money moves and
+ * balances unwind), archive (reversible, but it stops new postings), and
+ * clearing an archived target's plan (it cannot be re-planned without a
+ * restore). Ordinary saves use `SubmitButton`.
  */
 export function ConfirmSubmit({
 	children,

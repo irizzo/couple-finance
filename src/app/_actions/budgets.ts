@@ -21,8 +21,8 @@ import {
  *
  * `revalidatePath` targets `/budget` only: a budget is a plan, so writing one
  * moves no balance and changes nothing on the ledger or the settings screens.
- * That is the opposite of a transaction write, which has to revalidate the whole
- * layout.
+ * That is the opposite of a transaction or entity write, both of which reach
+ * every screen and so revalidate the whole layout.
  */
 
 const PATH = "/budget";

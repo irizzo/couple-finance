@@ -16,10 +16,9 @@ import {
 
 /**
  * Form adapters for categories. Name and description only — a category carries
- * no balances, and since Phase 1 no `saldoId` either.
+ * no balances, and since Phase 1 no `saldoId` either. Every write revalidates
+ * the whole layout, for the reason given in `accounts.ts`.
  */
-
-const PATH = "/settings/categories";
 
 export async function createCategoryForm(
 	_previous: FormState,
@@ -30,7 +29,7 @@ export async function createCategoryForm(
 		description: textField(formData, "description"),
 	});
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result, formValues(formData));
 }
@@ -45,7 +44,7 @@ export async function updateCategoryForm(
 		description: textField(formData, "description"),
 	});
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result, formValues(formData));
 }
@@ -56,7 +55,7 @@ export async function archiveCategoryForm(
 ): Promise<FormState> {
 	const result = await archiveCategory(textField(formData, "id"));
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result);
 }
@@ -67,7 +66,7 @@ export async function unarchiveCategoryForm(
 ): Promise<FormState> {
 	const result = await unarchiveCategory(textField(formData, "id"));
 	if (result.ok) {
-		revalidatePath(PATH);
+		revalidatePath("/", "layout");
 	}
 	return fromResult(result);
 }
