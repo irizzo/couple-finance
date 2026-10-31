@@ -30,6 +30,7 @@ export async function createSaldoForm(
 ): Promise<FormState> {
 	const result = await createSaldo({
 		name: textField(formData, "name"),
+		description: textField(formData, "description"),
 		initialAmount: parseAmount(formData.get("initialAmount")),
 	});
 	if (result.ok) {
@@ -44,6 +45,8 @@ export async function updateSaldoForm(
 ): Promise<FormState> {
 	const result = await updateSaldo(textField(formData, "id"), {
 		name: textField(formData, "name"),
+		// The row always submits the input, so `""` here means "cleared".
+		description: textField(formData, "description"),
 		initialAmount: parseAmount(formData.get("initialAmount")),
 	});
 	if (result.ok) {

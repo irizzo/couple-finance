@@ -15,8 +15,8 @@ import {
 } from "./form-state";
 
 /**
- * Form adapters for categories. Name only — a category carries no balances, and
- * since Phase 1 no `saldoId` either.
+ * Form adapters for categories. Name and description only — a category carries
+ * no balances, and since Phase 1 no `saldoId` either.
  */
 
 const PATH = "/settings/categories";
@@ -25,7 +25,10 @@ export async function createCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	const result = await createCategory({ name: textField(formData, "name") });
+	const result = await createCategory({
+		name: textField(formData, "name"),
+		description: textField(formData, "description"),
+	});
 	if (result.ok) {
 		revalidatePath(PATH);
 	}
@@ -38,6 +41,8 @@ export async function updateCategoryForm(
 ): Promise<FormState> {
 	const result = await updateCategory(textField(formData, "id"), {
 		name: textField(formData, "name"),
+		// The row always submits the input, so `""` here means "cleared".
+		description: textField(formData, "description"),
 	});
 	if (result.ok) {
 		revalidatePath(PATH);

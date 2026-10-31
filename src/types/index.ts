@@ -15,9 +15,15 @@ export interface Transaction {
 	type: TransactionType;
 }
 
+/**
+ * `description` on Account, Saldo and Category says what the bucket is *for*.
+ * Unrelated to `Transaction.description`, which is required and says what the
+ * lançamento *was*.
+ */
 export interface Account {
 	id: string;
 	name: string;
+	description: string;
 	initialAmount: number;
 	totalBalance: number;
 	realBalance: number;
@@ -27,6 +33,7 @@ export interface Account {
 export interface Saldo {
 	id: string;
 	name: string;
+	description: string;
 	initialAmount: number;
 	totalBalance: number;
 	realBalance: number;
@@ -40,6 +47,7 @@ export interface Saldo {
 export interface Category {
 	id: string;
 	name: string;
+	description: string;
 	archived: boolean;
 }
 
@@ -63,22 +71,38 @@ export interface Budget {
 
 export type SetBudgetInput = Omit<Budget, "id">;
 
+/**
+ * Optional on input, but always stored: an omitted description is written as
+ * `""`, so a document never reads back `undefined` against a `string` type.
+ */
+export type DescriptionInput = { description?: string };
+
 export type CreateAccountInput = Omit<
 	Account,
-	"id" | "totalBalance" | "realBalance" | "archived"
->;
+	"id" | "totalBalance" | "realBalance" | "archived" | "description"
+> &
+	DescriptionInput;
 export type UpdateAccountInput = Partial<
-	Pick<Account, "name" | "initialAmount">
+	Pick<Account, "name" | "initialAmount" | "description">
 >;
 
 export type CreateSaldoInput = Omit<
 	Saldo,
-	"id" | "totalBalance" | "realBalance" | "archived"
+	"id" | "totalBalance" | "realBalance" | "archived" | "description"
+> &
+	DescriptionInput;
+export type UpdateSaldoInput = Partial<
+	Pick<Saldo, "name" | "initialAmount" | "description">
 >;
-export type UpdateSaldoInput = Partial<Pick<Saldo, "name" | "initialAmount">>;
 
-export type CreateCategoryInput = Omit<Category, "id" | "archived">;
-export type UpdateCategoryInput = Partial<Pick<Category, "name">>;
+export type CreateCategoryInput = Omit<
+	Category,
+	"id" | "archived" | "description"
+> &
+	DescriptionInput;
+export type UpdateCategoryInput = Partial<
+	Pick<Category, "name" | "description">
+>;
 
 export type CreateTransactionInput = Omit<Transaction, "id">;
 export type UpdateTransactionInput = Partial<CreateTransactionInput>;

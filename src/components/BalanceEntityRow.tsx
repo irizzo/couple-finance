@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { type FormAction, IDLE_FORM_STATE } from "@/app/_actions/form-state";
+import { TEXT_MAX_LENGTH } from "@/database/validators";
 import { ConfirmSubmit } from "./ConfirmSubmit";
 import controls from "./controls.module.css";
 import styles from "./EntityManager.module.css";
@@ -20,6 +21,7 @@ interface BalanceEntityRowProps {
 export interface BalanceEntityView {
 	id: string;
 	name: string;
+	description: string;
 	initialAmount: number;
 	totalBalance: number;
 	realBalance: number;
@@ -27,8 +29,9 @@ export interface BalanceEntityView {
 }
 
 /**
- * One editable row. Name and opening amount are edited in place and saved with
- * the row's own button; archiving is a separate, self-contained form.
+ * One editable row. Name, description and opening amount are edited in place
+ * and saved with the row's own button; archiving is a separate, self-contained
+ * form.
  *
  * The edit inputs sit in different `<td>`s, so they are tied to their `<form>`
  * by the HTML `form` attribute rather than by nesting — a `<form>` may not span
@@ -54,12 +57,17 @@ export function BalanceEntityRow({
 
 	const formId = `edit-${entity.id}`;
 	const nameError = updateState.fieldErrors?.name;
+	const descriptionError = updateState.fieldErrors?.description;
 	const amountError = updateState.fieldErrors?.initialAmount;
+	// Field messages first: a validation failure always sets `error` too ("Invalid
+	// account"), so leading with it would hide the message that says what is
+	// wrong — the same precedence the create form gives its fields.
 	const problem =
+		nameError ??
+		descriptionError ??
+		amountError ??
 		updateState.error ??
 		archiveState.error ??
-		nameError ??
-		amountError ??
 		undefined;
 
 	return (
@@ -81,6 +89,22 @@ export function BalanceEntityRow({
 					{entity.archived && (
 						<span className={styles.archivedTag}>{labels.archivedTag}</span>
 					)}
+				</td>
+				<td>
+					<input
+						aria-invalid={Boolean(descriptionError)}
+						aria-label={labels.description}
+						className={styles.descriptionInput}
+						// `?? ""` because `withId` is a blind cast: a document that missed
+						// the backfill should show a blank cell, not "undefined".
+						defaultValue={
+							updateState.values?.description ?? entity.description ?? ""
+						}
+						form={formId}
+						maxLength={TEXT_MAX_LENGTH}
+						name="description"
+						type="text"
+					/>
 				</td>
 				<td className={styles.numeric}>
 					<input
@@ -133,7 +157,7 @@ export function BalanceEntityRow({
 			</tr>
 			{problem && (
 				<tr>
-					<td className={styles.rowError} colSpan={5}>
+					<td className={styles.rowError} colSpan={6}>
 						{problem}
 					</td>
 				</tr>

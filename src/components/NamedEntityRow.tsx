@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { type FormAction, IDLE_FORM_STATE } from "@/app/_actions/form-state";
+import { TEXT_MAX_LENGTH } from "@/database/validators";
 import { ConfirmSubmit } from "./ConfirmSubmit";
 import controls from "./controls.module.css";
 import styles from "./EntityManager.module.css";
@@ -19,12 +20,14 @@ interface NamedEntityRowProps {
 export interface NamedEntityView {
 	id: string;
 	name: string;
+	description: string;
 	archived: boolean;
 }
 
 /**
- * A name-only row — categories. Same mechanics as `BalanceEntityRow` (see its
- * note on the `form` attribute), with one editable field and no balance columns.
+ * A row with no balances — categories. Same mechanics as `BalanceEntityRow`
+ * (see its note on the `form` attribute), with name and description as the
+ * editable fields and no balance columns.
  */
 export function NamedEntityRow({
 	entity,
@@ -44,8 +47,14 @@ export function NamedEntityRow({
 
 	const formId = `edit-${entity.id}`;
 	const nameError = updateState.fieldErrors?.name;
+	const descriptionError = updateState.fieldErrors?.description;
+	// Field messages first — see the same chain in `BalanceEntityRow`.
 	const problem =
-		updateState.error ?? archiveState.error ?? nameError ?? undefined;
+		nameError ??
+		descriptionError ??
+		updateState.error ??
+		archiveState.error ??
+		undefined;
 
 	return (
 		<>
@@ -66,6 +75,21 @@ export function NamedEntityRow({
 					{entity.archived && (
 						<span className={styles.archivedTag}>{labels.archivedTag}</span>
 					)}
+				</td>
+				<td>
+					<input
+						aria-invalid={Boolean(descriptionError)}
+						aria-label={labels.description}
+						className={styles.descriptionInput}
+						// `?? ""` — see the same input in `BalanceEntityRow`.
+						defaultValue={
+							updateState.values?.description ?? entity.description ?? ""
+						}
+						form={formId}
+						maxLength={TEXT_MAX_LENGTH}
+						name="description"
+						type="text"
+					/>
 				</td>
 				<td className={styles.actionsCell}>
 					<span className={styles.rowActions}>
@@ -97,7 +121,7 @@ export function NamedEntityRow({
 			</tr>
 			{problem && (
 				<tr>
-					<td className={styles.rowError} colSpan={2}>
+					<td className={styles.rowError} colSpan={3}>
 						{problem}
 					</td>
 				</tr>

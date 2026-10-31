@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { type FormAction, IDLE_FORM_STATE } from "@/app/_actions/form-state";
+import { TEXT_MAX_LENGTH } from "@/database/validators";
 import styles from "./EntityManager.module.css";
 import type { EntityLabels } from "./entity-labels";
 import { Field } from "./Field";
@@ -20,7 +21,8 @@ interface NamedEntityManagerProps {
 }
 
 /**
- * Create form plus editable table for name-only entities — categories.
+ * Create form plus editable table for the entities with no balances —
+ * categories: a name and a description.
  *
  * The balance variant lives in `BalanceEntityManager`; the split mirrors the
  * data layer's own `createNamedEntity` / `createBalanceEntity` pair.
@@ -59,6 +61,25 @@ export function NamedEntityManager({
 						/>
 					</Field>
 				</div>
+				<div className={styles.grow}>
+					{/* One line, not a textarea: ask for what the row editor can change. */}
+					<Field
+						error={state.fieldErrors?.description}
+						hint="Opcional"
+						label={labels.description}
+						name="description"
+					>
+						<input
+							aria-invalid={Boolean(state.fieldErrors?.description)}
+							defaultValue={state.values?.description ?? ""}
+							id="description"
+							maxLength={TEXT_MAX_LENGTH}
+							name="description"
+							placeholder={labels.descriptionPlaceholder}
+							type="text"
+						/>
+					</Field>
+				</div>
 				<div className={styles.createAction}>
 					<SubmitButton pendingLabel="Criando…">Adicionar</SubmitButton>
 				</div>
@@ -74,6 +95,7 @@ export function NamedEntityManager({
 					<thead>
 						<tr>
 							<th scope="col">Nome</th>
+							<th scope="col">Descrição</th>
 							<th className={styles.actionsCell} scope="col">
 								Ações
 							</th>
@@ -82,7 +104,7 @@ export function NamedEntityManager({
 					<tbody>
 						{entities.length === 0 ? (
 							<tr>
-								<td className={styles.empty} colSpan={2}>
+								<td className={styles.empty} colSpan={3}>
 									{labels.empty}
 								</td>
 							</tr>

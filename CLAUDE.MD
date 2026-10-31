@@ -26,8 +26,8 @@ Actions.
 | --- | --- |
 | `src/database/db.ts` | Exports the Firestore handle. **Admin SDK only** — never the client `firebase` package. |
 | `src/database/*.actions.ts` | One file per entity, each marked `"use server"`. The only public API. |
-| `src/database/entities.ts` | Shared CRUD behind accounts/saldos/categories. Two shapes: `createNamedEntity`/`updateNamedEntity` (name only — categories) and `createBalanceEntity`/`updateBalanceEntity` (name + two balances — accounts and saldos, which are structurally identical, so their logic exists once). Also `assertActive(collection, id, label)`, the shared exists-and-not-archived guard. |
-| `src/database/validators.ts` | Hand-rolled validation primitives, no dependency. |
+| `src/database/entities.ts` | Shared CRUD behind accounts/saldos/categories. Two shapes: `createNamedEntity`/`updateNamedEntity` (name + description — categories) and `createBalanceEntity`/`updateBalanceEntity` (name + description + two balances — accounts and saldos, which are structurally identical, so their logic exists once). Also `assertActive(collection, id, label)`, the shared exists-and-not-archived guard. |
+| `src/database/validators.ts` | Hand-rolled validation primitives, no dependency. **Must stay pure**: `src/lib` imports `round2` from it, and the client form components import `TEXT_MAX_LENGTH`, so a Firestore import here would leak into the browser bundle. |
 | `src/database/result.ts` | The `ActionResult<T>` envelope. |
 | `src/database/collections.ts` | Collection names, the `withId` snapshot mapper, and `budgetDocId` — the one derived document id in the app. |
 
@@ -55,6 +55,14 @@ helpers have to stay in the non-action modules above.
   `archived: false` on create: a `where("archived", "==", false)` query silently
   skips documents missing the field. Archived entities reject *new* postings but
   stay editable, so archiving never freezes history.
+* **`description` is optional on input and always stored as a string.** Accounts,
+  saldos and categories carry one, saying what the bucket is *for*. That is not
+  `Transaction.description`, which is required and says what the lançamento
+  *was*. Writing `""` explicitly when it is omitted is mandatory for the same
+  reason `archived: false` is: `withId` is a blind cast, and a missing field
+  reads back as `undefined` against a `string` type. It is capped at 280
+  characters (`optionalText`) and stored trimmed (`trimmedText`). Documents that
+  predate the field were backfilled by `scripts/backfill-descriptions.mts`.
 * **No composite indexes.** The selective `date` range runs in Firestore
   (ISO `YYYY-MM-DD` strings sort lexicographically); `archived` and id-equality
   filters are applied in memory. Personal-scale data, zero index setup.
@@ -119,6 +127,16 @@ route-unaware data API: it knows nothing about routes, `FormData`, or React.
   see it — take the pending flag from `useActionState`'s third return value.
 * **`useActionState` does not auto-reset a form.** A successful create has to
   clear it through a `ref`, or the next entry starts with the last one's values.
+* **A field's message outranks the form's.** A validation failure sets both
+  `error` ("Invalid saldo") and `fieldErrors`. The create forms render each
+  field message under its input and hide the banner. The settings rows have one
+  error cell, so their `problem` chain lists the field messages *before*
+  `error`. Leading with `error` hides the message that says what is wrong.
+* **A description is shown where you decide, not where you pick.** It appears in
+  the three settings tables and as a muted second line in the `/budget` target
+  cell, where "what counts as Essenciais?" is the question at hand. It never
+  goes into a transaction-form `<option>`, which cannot hold markup. Every
+  render site guards against `undefined`.
 * **Display strings are passed in, never derived from the entity name.**
   Portuguese agrees in gender ("Nome **da** conta" / "Nome **do** saldo"), and
   guessing that from a noun inside a component is how it breaks.
@@ -184,7 +202,7 @@ below), so nothing is written until the amount has been checked.
 **UI** — the app shell, design system, and all three layers above are in place.
 
 * **Settings CRUD works.** Accounts, saldos and categories can be created,
-  renamed, re-based, archived and restored at `/settings/*`.
+  renamed, described, re-based, archived and restored at `/settings/*`.
 * **The monthly ledger works.** `/transactions?month=YYYY-MM` shows the month's
   lançamentos with a real/total summary, independent conta/saldo/categoria
   filters, resolved names, and an Ações column.
@@ -197,7 +215,7 @@ below), so nothing is written until the amount has been checked.
 * **Budget planning works.** `/budget?month=YYYY-MM` plans the month over
   saldos and over categories independently, each a flat table editable in
   place, with planned / gasto / restante / consumption bar, per-section totals,
-  and a "copy last month" button.
+  and a "copy last month" button. A target's description shows under its name.
 * **Nothing renders a blank page.** Every page reports a failed `ActionResult`
   in a banner and has a first-run empty state pointing at what must be created
   first. `not-found.tsx` covers a URL that isn't a route, `error.tsx` anything
@@ -236,3 +254,10 @@ never been seen rendered, only proven reachable; it needs one look in a browser.
 See [PLAN.md](PLAN.md) for the phased plan and
 [IMPLEMENTATION.MD](IMPLEMENTATION.MD) for what each finished phase actually
 produced, including where it departed from the plan.
+
+**Improvement track, in progress.** [IMPROVEMENT_PLAN.MD](IMPROVEMENT_PLAN.MD)
+schedules the items above, plus an entity `description` field and four defects
+(G1–G4). [IMPROVMENT_IMPLEMENTATION.MD](IMPROVMENT_IMPLEMENTATION.MD) records
+each phase as it lands. Phases A and B are done: `description` is stored,
+validated, editable on the settings screens and shown on `/budget`. Next is
+Phase C, the four defects.

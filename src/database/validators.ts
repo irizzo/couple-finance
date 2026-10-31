@@ -7,11 +7,45 @@ const ISO_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 /** Currency is stored with two decimal places. */
 const CENTS_PER_UNIT = 100;
 
+/**
+ * One line of free text — what the settings row editor has room for. Exported
+ * so the inputs' `maxLength` and this validator cannot drift apart.
+ */
+export const TEXT_MAX_LENGTH = 280;
+
 export function nonEmptyString(value: unknown): string | null {
 	if (typeof value !== "string" || value.trim() === "") {
 		return "must be a non-empty text";
 	}
 	return null;
+}
+
+/**
+ * A field that may be left blank: `undefined`, `null` and `""` all pass. The
+ * length cap is measured on the trimmed text, since that is what gets stored.
+ */
+export function optionalText(
+	value: unknown,
+	maxLength = TEXT_MAX_LENGTH,
+): string | null {
+	if (value === undefined || value === null) {
+		return null;
+	}
+	if (typeof value !== "string") {
+		return "must be text";
+	}
+	if (value.trim().length > maxLength) {
+		return `must be at most ${maxLength} characters`;
+	}
+	return null;
+}
+
+/**
+ * The normalizer behind `optionalText`: a string comes back trimmed, anything
+ * else as `""`. This is what turns "field absent" into a stored empty string.
+ */
+export function trimmedText(value: unknown): string {
+	return typeof value === "string" ? value.trim() : "";
 }
 
 export function finiteNumber(value: unknown): string | null {

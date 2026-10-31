@@ -129,6 +129,10 @@
 	min-width: 10rem;
 }
 
+.descriptionInput {
+	min-width: 14rem;
+}
+
 .amountInput {
 	max-width: 9rem;
 	text-align: right;

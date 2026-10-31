@@ -6,7 +6,9 @@ import {
 	collect,
 	finiteNumber,
 	nonEmptyString,
+	optionalText,
 	round2,
+	trimmedText,
 } from "@/database/validators";
 import type { ListOptions } from "@/types";
 
@@ -25,6 +27,7 @@ import type { ListOptions } from "@/types";
 export interface BalanceEntity {
 	id: string;
 	name: string;
+	description: string;
 	initialAmount: number;
 	totalBalance: number;
 	realBalance: number;
@@ -34,6 +37,7 @@ export interface BalanceEntity {
 export interface NamedEntity {
 	id: string;
 	name: string;
+	description: string;
 	archived: boolean;
 }
 
@@ -62,7 +66,9 @@ export async function assertActive(
 	if (!snap.exists) {
 		return `${label} "${id}" was not found`;
 	}
-	if (withId<NamedEntity>(snap).archived) {
+	// Only `archived` is read, so only `archived` is claimed — not every field
+	// `NamedEntity` happens to carry.
+	if ((snap.data() as { archived: boolean }).archived) {
 		return `${label} "${id}" is archived`;
 	}
 	return null;
@@ -131,10 +137,13 @@ export async function setArchived<T extends NamedEntity>(
 
 export async function createNamedEntity<T extends NamedEntity>(
 	collection: string,
-	input: { name: string },
+	input: { name: string; description?: string },
 	label: string,
 ): Promise<ActionResult<T>> {
-	const fieldErrors = collect({ name: nonEmptyString(input?.name) });
+	const fieldErrors = collect({
+		name: nonEmptyString(input?.name),
+		description: optionalText(input?.description),
+	});
 	if (fieldErrors) {
 		return fail<T>(`Invalid ${label.toLowerCase()}`, fieldErrors);
 	}
@@ -143,8 +152,13 @@ export async function createNamedEntity<T extends NamedEntity>(
 		const docRef = ref(collection).doc();
 		// `archived: false` is mandatory, not a default: a
 		// `where("archived", "==", false)` query silently skips documents that are
-		// missing the field entirely.
-		const data = { name: input.name.trim(), archived: false };
+		// missing the field entirely. `description` is written for the same
+		// reason — as `""` when omitted, never left out.
+		const data = {
+			name: input.name.trim(),
+			description: trimmedText(input.description),
+			archived: false,
+		};
 		await docRef.set(data);
 		return ok({ id: docRef.id, ...data } as T);
 	} catch (cause) {
@@ -155,13 +169,18 @@ export async function createNamedEntity<T extends NamedEntity>(
 export async function updateNamedEntity<T extends NamedEntity>(
 	collection: string,
 	id: string,
-	input: { name?: string },
+	input: { name?: string; description?: string },
 	label: string,
 ): Promise<ActionResult<T>> {
-	if (input?.name === undefined) {
+	if (input?.name === undefined && input?.description === undefined) {
 		return fail<T>("Nothing to update");
 	}
-	const fieldErrors = collect({ name: nonEmptyString(input.name) });
+	const fieldErrors = collect({
+		...(input.name !== undefined ? { name: nonEmptyString(input.name) } : {}),
+		...(input.description !== undefined
+			? { description: optionalText(input.description) }
+			: {}),
+	});
 	if (fieldErrors) {
 		return fail<T>(`Invalid ${label.toLowerCase()}`, fieldErrors);
 	}
@@ -173,7 +192,14 @@ export async function updateNamedEntity<T extends NamedEntity>(
 			return notFound<T>(label, id);
 		}
 
-		const patch = { name: input.name.trim() };
+		const patch: Partial<NamedEntity> = {};
+		if (input.name !== undefined) {
+			patch.name = input.name.trim();
+		}
+		if (input.description !== undefined) {
+			// `""` is a real value here: it clears the description.
+			patch.description = trimmedText(input.description);
+		}
 		await docRef.update(patch);
 		return ok({ ...withId<T>(snap), ...patch });
 	} catch (cause) {
@@ -183,11 +209,12 @@ export async function updateNamedEntity<T extends NamedEntity>(
 
 export async function createBalanceEntity<T extends BalanceEntity>(
 	collection: string,
-	input: { name: string; initialAmount: number },
+	input: { name: string; description?: string; initialAmount: number },
 	label: string,
 ): Promise<ActionResult<T>> {
 	const fieldErrors = collect({
 		name: nonEmptyString(input?.name),
+		description: optionalText(input?.description),
 		initialAmount: finiteNumber(input?.initialAmount),
 	});
 	if (fieldErrors) {
@@ -199,6 +226,8 @@ export async function createBalanceEntity<T extends BalanceEntity>(
 		const docRef = ref(collection).doc();
 		const data = {
 			name: input.name.trim(),
+			// Mandatory, not a default — see `createNamedEntity`.
+			description: trimmedText(input.description),
 			initialAmount,
 			// A single opening amount seeds both balances: before any transaction
 			// exists, what moved and what is owed are the same figure.
@@ -216,11 +245,14 @@ export async function createBalanceEntity<T extends BalanceEntity>(
 export async function updateBalanceEntity<T extends BalanceEntity>(
 	collection: string,
 	id: string,
-	input: { name?: string; initialAmount?: number },
+	input: { name?: string; description?: string; initialAmount?: number },
 	label: string,
 ): Promise<ActionResult<T>> {
 	const fieldErrors = collect({
 		...(input?.name !== undefined ? { name: nonEmptyString(input.name) } : {}),
+		...(input?.description !== undefined
+			? { description: optionalText(input.description) }
+			: {}),
 		...(input?.initialAmount !== undefined
 			? { initialAmount: finiteNumber(input.initialAmount) }
 			: {}),
@@ -228,7 +260,11 @@ export async function updateBalanceEntity<T extends BalanceEntity>(
 	if (fieldErrors) {
 		return fail<T>(`Invalid ${label.toLowerCase()}`, fieldErrors);
 	}
-	if (input?.name === undefined && input?.initialAmount === undefined) {
+	if (
+		input?.name === undefined &&
+		input?.description === undefined &&
+		input?.initialAmount === undefined
+	) {
 		return fail<T>("Nothing to update");
 	}
 
@@ -244,6 +280,9 @@ export async function updateBalanceEntity<T extends BalanceEntity>(
 			const patch: Partial<BalanceEntity> = {};
 			if (input.name !== undefined) {
 				patch.name = input.name.trim();
+			}
+			if (input.description !== undefined) {
+				patch.description = trimmedText(input.description);
 			}
 			if (input.initialAmount !== undefined) {
 				// Each running balance is `initialAmount + sum(transactions)`, so

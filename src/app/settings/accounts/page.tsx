@@ -16,6 +16,8 @@ const PATH = "/settings/accounts";
 const LABELS: EntityLabels = {
 	name: "Nome da conta",
 	placeholder: "Conta corrente",
+	description: "Descrição da conta",
+	descriptionPlaceholder: "Conta conjunta para as despesas da casa",
 	empty: "Nenhuma conta cadastrada ainda.",
 	archivedTag: "arquivada",
 	archiveConfirm:

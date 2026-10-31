@@ -32,6 +32,7 @@ export async function createAccountForm(
 ): Promise<FormState> {
 	const result = await createAccount({
 		name: textField(formData, "name"),
+		description: textField(formData, "description"),
 		initialAmount: parseAmount(formData.get("initialAmount")),
 	});
 	if (result.ok) {
@@ -46,6 +47,8 @@ export async function updateAccountForm(
 ): Promise<FormState> {
 	const result = await updateAccount(textField(formData, "id"), {
 		name: textField(formData, "name"),
+		// The row always submits the input, so `""` here means "cleared".
+		description: textField(formData, "description"),
 		initialAmount: parseAmount(formData.get("initialAmount")),
 	});
 	if (result.ok) {

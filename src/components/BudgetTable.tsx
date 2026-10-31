@@ -103,6 +103,13 @@ export function BudgetTable({
 												({archivedLabel})
 											</span>
 										)}
+										{/* Truthiness, not `!== ""`: a document that missed the
+										    backfill reads `undefined`, and must not print it. */}
+										{row.description && (
+											<span className={styles.targetDescription}>
+												{row.description}
+											</span>
+										)}
 									</td>
 									<td>
 										{row.targetId === "" ? (

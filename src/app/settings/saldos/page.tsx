@@ -16,6 +16,8 @@ const PATH = "/settings/saldos";
 const LABELS: EntityLabels = {
 	name: "Nome do saldo",
 	placeholder: "Essenciais",
+	description: "Descrição do saldo",
+	descriptionPlaceholder: "Contas fixas, mercado e saúde",
 	empty: "Nenhum saldo cadastrado ainda.",
 	archivedTag: "arquivado",
 	archiveConfirm:

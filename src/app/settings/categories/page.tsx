@@ -16,6 +16,8 @@ const PATH = "/settings/categories";
 const LABELS: EntityLabels = {
 	name: "Nome da categoria",
 	placeholder: "Mercado",
+	description: "Descrição da categoria",
+	descriptionPlaceholder: "Compras do mês e da feira",
 	empty: "Nenhuma categoria cadastrada ainda.",
 	archivedTag: "arquivada",
 	archiveConfirm:

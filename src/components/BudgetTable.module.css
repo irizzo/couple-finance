@@ -70,6 +70,18 @@
 	font-weight: 400;
 }
 
+/* A muted second line under the target name, answering "what counts here?".
+   The max-width caps the cell's intrinsic width, so a long description wraps
+   instead of stretching the table. */
+.targetDescription {
+	display: block;
+	max-width: 24rem;
+	margin-top: var(--space-1);
+	color: var(--muted);
+	font-size: 0.8125rem;
+	font-weight: 400;
+}
+
 .numeric {
 	text-align: right;
 	font-variant-numeric: tabular-nums;

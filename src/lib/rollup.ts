@@ -101,6 +101,7 @@ export function indexById<T extends { id: string }>(
 export interface BudgetTarget {
 	id: string;
 	name: string;
+	description: string;
 	archived: boolean;
 }
 
@@ -109,6 +110,8 @@ export type BudgetStatus = "ok" | "warning" | "over" | "unplanned";
 export interface BudgetRow {
 	targetId: string;
 	name: string;
+	/** What the target is for — "what counts as Essenciais?". `""` when unset. */
+	description: string;
 	archived: boolean;
 	/** `null` when nothing is planned for this target this month. */
 	planned: number | null;
@@ -202,6 +205,7 @@ export function buildBudgetRows({
 		rows.push({
 			targetId: entity.id,
 			name: entity.name,
+			description: entity.description,
 			archived: entity.archived,
 			planned: amount,
 			budgetId: budget?.id ?? null,
@@ -229,6 +233,7 @@ export function buildBudgetRows({
 		rows.push({
 			targetId: "",
 			name: "(removido)",
+			description: "",
 			archived: false,
 			planned: null,
 			budgetId: null,

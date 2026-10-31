@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { type FormAction, IDLE_FORM_STATE } from "@/app/_actions/form-state";
+import { TEXT_MAX_LENGTH } from "@/database/validators";
 import { BalanceEntityRow, type BalanceEntityView } from "./BalanceEntityRow";
 import styles from "./EntityManager.module.css";
 import type { EntityLabels } from "./entity-labels";
@@ -23,7 +24,8 @@ interface BalanceEntityManagerProps {
  * Create form plus editable table for the two balance-carrying entities.
  *
  * Accounts and saldos share this component because they are structurally
- * identical — a name plus `initialAmount`, `totalBalance` and `realBalance` —
+ * identical — a name and description plus `initialAmount`, `totalBalance` and
+ * `realBalance` —
  * the same reason `createBalanceEntity` exists once in the data layer. Only the
  * labels and the action set differ.
  */
@@ -64,6 +66,25 @@ export function BalanceEntityManager({
 						/>
 					</Field>
 				</div>
+				<div className={styles.grow}>
+					{/* One line, not a textarea: ask for what the row editor can change. */}
+					<Field
+						error={state.fieldErrors?.description}
+						hint="Opcional"
+						label={labels.description}
+						name="description"
+					>
+						<input
+							aria-invalid={Boolean(state.fieldErrors?.description)}
+							defaultValue={state.values?.description ?? ""}
+							id="description"
+							maxLength={TEXT_MAX_LENGTH}
+							name="description"
+							placeholder={labels.descriptionPlaceholder}
+							type="text"
+						/>
+					</Field>
+				</div>
 				<div className={styles.amount}>
 					<Field
 						error={state.fieldErrors?.initialAmount}
@@ -97,6 +118,7 @@ export function BalanceEntityManager({
 					<thead>
 						<tr>
 							<th scope="col">Nome</th>
+							<th scope="col">Descrição</th>
 							<th className={styles.numeric} scope="col">
 								Inicial
 							</th>
@@ -114,7 +136,7 @@ export function BalanceEntityManager({
 					<tbody>
 						{entities.length === 0 ? (
 							<tr>
-								<td className={styles.empty} colSpan={5}>
+								<td className={styles.empty} colSpan={6}>
 									{labels.empty}
 								</td>
 							</tr>

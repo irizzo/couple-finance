@@ -11,6 +11,10 @@ export interface EntityLabels {
 	name: string;
 	/** Example value for the name input: "Conta corrente". */
 	placeholder: string;
+	/** Create-form label and row `aria-label`: "Descrição da conta". */
+	description: string;
+	/** Example value for the description input. */
+	descriptionPlaceholder: string;
 	/** Shown when nothing exists yet: "Nenhuma conta cadastrada ainda." */
 	empty: string;
 	/** Badge on an archived row: "arquivada" / "arquivado". */
