@@ -5,15 +5,29 @@
  *
  * Two different time bases on purpose:
  *
- * * "What month/day is it *now*" reads **local** date parts. At 22:00 on
- *   31 October in Brazil (UTC−3) the UTC date is already 1 November, so
- *   `toISOString()` would drop the user into the wrong month.
+ * * "What month/day is it *now*" reads the date in **`HOME_TIME_ZONE`**. At
+ *   22:00 on 31 October in Brazil (UTC−3) the UTC date is already 1 November,
+ *   so `toISOString()` would drop the user into the wrong month.
  * * Arithmetic on an already-known month pins itself to **UTC** with
  *   `Date.UTC`, so no timezone or DST shift can roll a month boundary over.
  */
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const MONTHS_PER_YEAR = 12;
+
+/**
+ * Where the couple lives. Named rather than left to the clock's "local" time,
+ * because every caller of `currentMonth` / `today` is a Server Component: local
+ * would mean the server process's zone, which is UTC on most hosts.
+ */
+const HOME_TIME_ZONE = "America/Sao_Paulo";
+
+const homeDate = new Intl.DateTimeFormat("en-US", {
+	timeZone: HOME_TIME_ZONE,
+	year: "numeric",
+	month: "2-digit",
+	day: "2-digit",
+});
 
 function pad(value: number): string {
 	return String(value).padStart(2, "0");
@@ -33,19 +47,21 @@ export function isMonth(value: unknown): value is string {
 	return typeof value === "string" && MONTH_PATTERN.test(value);
 }
 
-/** Current month in the viewer's own timezone. */
-export function currentMonth(): string {
-	const now = new Date();
-	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-}
-
 /**
- * Today as an ISO `YYYY-MM-DD` date, in the viewer's own timezone — the default
- * for a new transaction, and the new date a duplicate gets.
+ * Today as an ISO `YYYY-MM-DD` date in `HOME_TIME_ZONE` — the default for a new
+ * transaction, and the new date a duplicate gets.
  */
 export function today(): string {
-	const now = new Date();
-	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+	// Assembled from parts, not from a locale whose format happens to be ISO.
+	const date = Object.fromEntries(
+		homeDate.formatToParts(new Date()).map(({ type, value }) => [type, value]),
+	);
+	return `${date.year}-${date.month}-${date.day}`;
+}
+
+/** Current month in `HOME_TIME_ZONE`. */
+export function currentMonth(): string {
+	return today().slice(0, "YYYY-MM".length);
 }
 
 /**

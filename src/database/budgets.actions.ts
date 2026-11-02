@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { budgetDocId, COLLECTIONS, withId } from "@/database/collections";

@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 import type {
 	DocumentData,
@@ -36,12 +36,7 @@ const accountRef = (id: string) => ref(COLLECTIONS.accounts).doc(id);
 const saldoRef = (id: string) => ref(COLLECTIONS.saldos).doc(id);
 const categoryRef = (id: string) => ref(COLLECTIONS.categories).doc(id);
 
-/** Expenses pull a balance down, receitas push it up. */
-function signed(amount: number, type: TransactionType): number {
-	return type === TransactionType.EXPENSE ? -amount : amount;
-}
-
-/** The pair of balance movements a single transaction causes. */
+/** The pair of balance movements a transaction causes on one document. */
 interface Delta {
 	total: number;
 	real: number;
@@ -49,27 +44,131 @@ interface Delta {
 
 const NO_DELTA: Delta = { total: 0, real: 0 };
 
-/**
- * Both amounts post to both balances, on the account *and* on the saldo. That
- * is the split-expense model from CLAUDE.MD: an R$90 internet bill split 50/50
- * moves each entity's `totalBalance` by R$90 (what actually left the bank) and
- * its `realBalance` by R$45 (the share genuinely owed). Pass `sign: -1` to
- * reverse a posting.
- */
-function postings(
-	txn: Pick<Transaction, "totalAmount" | "realAmount" | "type">,
-	sign = 1,
-): Delta {
-	return {
-		total: sign * signed(txn.totalAmount, txn.type),
-		real: sign * signed(txn.realAmount, txn.type),
-	};
+/** One balance a transaction moves, and by how much. */
+interface Posting {
+	docRef: DocumentReference;
+	delta: Delta;
 }
+
+type Posted = Pick<
+	Transaction,
+	| "totalAmount"
+	| "realAmount"
+	| "type"
+	| "accountId"
+	| "saldoId"
+	| "toAccountId"
+	| "toSaldoId"
+>;
+
+/**
+ * Every balance a transaction moves. Both amounts post to both balances, on the
+ * account *and* on the saldo. That is the split-expense model from CLAUDE.MD:
+ * an R$90 internet bill split 50/50 moves each entity's `totalBalance` by R$90
+ * (what actually left the bank) and its `realBalance` by R$45 (the share
+ * genuinely owed). Expenses pull both down, receitas push both up.
+ *
+ * A transfer is both at once: it pulls its origin account and saldo down and
+ * pushes its destination pair up by the same amounts. When the two ends share
+ * an account (or a saldo), that document gets a debit and a matching credit,
+ * which `accumulate` cancels into no write at all.
+ *
+ * Pass `sign: -1` to reverse a posting.
+ */
+function postings(txn: Posted, sign = 1): Posting[] {
+	const moved = (direction: number): Delta => ({
+		total: sign * direction * txn.totalAmount,
+		real: sign * direction * txn.realAmount,
+	});
+	if (txn.type === TransactionType.TRANSFER) {
+		// Validation refuses a transfer without both destination ids, so the
+		// fallback only meets a document written outside the app — and `doc("")`
+		// throws, which the caller's catch turns into a failed result.
+		return [
+			{ docRef: accountRef(txn.accountId), delta: moved(-1) },
+			{ docRef: saldoRef(txn.saldoId), delta: moved(-1) },
+			{ docRef: accountRef(txn.toAccountId ?? ""), delta: moved(1) },
+			{ docRef: saldoRef(txn.toSaldoId ?? ""), delta: moved(1) },
+		];
+	}
+	const direction = txn.type === TransactionType.EXPENSE ? -1 : 1;
+	return [
+		{ docRef: accountRef(txn.accountId), delta: moved(direction) },
+		{ docRef: saldoRef(txn.saldoId), delta: moved(direction) },
+	];
+}
+
+interface Target {
+	label: string;
+	id: string;
+	docRef: DocumentReference;
+}
+
+/**
+ * Everything a transaction points at: its account, saldo and category, plus a
+ * transfer's destination pair.
+ */
+function targetsOf(txn: Posted & Pick<Transaction, "categoryId">): Target[] {
+	const targets: Target[] = [
+		{ label: "Account", id: txn.accountId, docRef: accountRef(txn.accountId) },
+		{ label: "Saldo", id: txn.saldoId, docRef: saldoRef(txn.saldoId) },
+		{
+			label: "Category",
+			id: txn.categoryId,
+			docRef: categoryRef(txn.categoryId),
+		},
+	];
+	if (txn.type === TransactionType.TRANSFER) {
+		const toAccountId = txn.toAccountId ?? "";
+		const toSaldoId = txn.toSaldoId ?? "";
+		targets.push(
+			{
+				label: "Destination account",
+				id: toAccountId,
+				docRef: accountRef(toAccountId),
+			},
+			{
+				label: "Destination saldo",
+				id: toSaldoId,
+				docRef: saldoRef(toSaldoId),
+			},
+		);
+	}
+	return targets;
+}
+
+const refsOf = (items: { docRef: DocumentReference }[]) =>
+	items.map((item) => item.docRef);
 
 function strip(input: UpdateTransactionInput): UpdateTransactionInput {
 	return Object.fromEntries(
 		Object.entries(input ?? {}).filter(([, value]) => value !== undefined),
 	) as UpdateTransactionInput;
+}
+
+/**
+ * A transfer's destination may repeat the origin's account or its saldo — a
+ * move between saldos inside one account, or between accounts under one saldo
+ * — but not both, since that would move nothing. The clash is reported on both
+ * fields, because changing either one resolves it.
+ */
+function validateDestination(
+	input: CreateTransactionInput,
+): Record<string, string | null> {
+	const toAccountId = nonEmptyString(input.toAccountId);
+	const toSaldoId = nonEmptyString(input.toSaldoId);
+	const sameEnds =
+		toAccountId === null &&
+		toSaldoId === null &&
+		input.toAccountId === input.accountId &&
+		input.toSaldoId === input.saldoId;
+	const clash = sameEnds
+		? "account and saldo cannot both match the origin"
+		: null;
+	return {
+		toAccountId: toAccountId ?? clash,
+		toSaldoId: toSaldoId ?? clash,
+	};
 }
 
 function validate(input: CreateTransactionInput): FieldErrors | null {
@@ -89,11 +188,14 @@ function validate(input: CreateTransactionInput): FieldErrors | null {
 			(amountsAreNumbers && input.realAmount > input.totalAmount
 				? "cannot be greater than the total amount"
 				: null),
+		...(input?.type === TransactionType.TRANSFER
+			? validateDestination(input)
+			: {}),
 	});
 }
 
 function normalize(input: CreateTransactionInput): Omit<Transaction, "id"> {
-	return {
+	const data = {
 		date: input.date,
 		description: input.description.trim(),
 		totalAmount: round2(input.totalAmount),
@@ -103,6 +205,11 @@ function normalize(input: CreateTransactionInput): Omit<Transaction, "id"> {
 		categoryId: input.categoryId,
 		type: input.type,
 	};
+	// Only a transfer stores a destination. Turning one into an expense drops
+	// it, since every write here is a `tx.set` of the whole document.
+	return input.type === TransactionType.TRANSFER
+		? { ...data, toAccountId: input.toAccountId, toSaldoId: input.toSaldoId }
+		: data;
 }
 
 type Snapshots = Map<string, DocumentSnapshot<DocumentData>>;
@@ -117,32 +224,26 @@ async function readAll(
 }
 
 /**
- * Verifies the account, saldo and category a transaction posts to. Saldo and
+ * Verifies everything a transaction points at (see `targetsOf`). Saldo and
  * category are independent dimensions, so each is checked only for existence
  * and active status — any category may pair with any saldo.
  *
- * `enforceActive` lists the ids the caller is newly pointing at: an archived
- * target may never receive a *new* posting, but an existing transaction must
- * stay editable even after its account has been archived.
+ * `enforceActive` lists the document paths the caller is newly pointing at: an
+ * archived target may never receive a *new* posting, but an existing
+ * transaction must stay editable even after its account has been archived.
  */
 function checkTargets(
 	snaps: Snapshots,
-	txn: Pick<Transaction, "accountId" | "saldoId" | "categoryId">,
+	targets: Target[],
 	enforceActive: Set<string>,
 ): string | null {
-	const targets = [
-		{ label: "Account", id: txn.accountId, ref: accountRef(txn.accountId) },
-		{ label: "Saldo", id: txn.saldoId, ref: saldoRef(txn.saldoId) },
-		{ label: "Category", id: txn.categoryId, ref: categoryRef(txn.categoryId) },
-	];
-
 	for (const target of targets) {
-		const snap = snaps.get(target.ref.path);
+		const snap = snaps.get(target.docRef.path);
 		if (!snap?.exists) {
 			return `${target.label} "${target.id}" was not found`;
 		}
 		const entity = withId<Account | Saldo | Category>(snap);
-		if (entity.archived && enforceActive.has(target.id)) {
+		if (entity.archived && enforceActive.has(target.docRef.path)) {
 			return `${target.label} "${target.id}" is archived`;
 		}
 	}
@@ -153,18 +254,17 @@ function checkTargets(
 /**
  * Deltas are accumulated per document before any write, so an edit that keeps
  * the same account (reverse the old amount, apply the new one) collapses into a
- * single balance write instead of two that would overwrite each other.
+ * single balance write instead of two that would overwrite each other. The same
+ * holds inside one transfer whose ends share an account or a saldo.
  */
-function accumulate(
-	deltas: Map<string, Delta>,
-	docRef: DocumentReference,
-	delta: Delta,
-): void {
-	const running = deltas.get(docRef.path) ?? NO_DELTA;
-	deltas.set(docRef.path, {
-		total: running.total + delta.total,
-		real: running.real + delta.real,
-	});
+function accumulate(deltas: Map<string, Delta>, moves: Posting[]): void {
+	for (const { docRef, delta } of moves) {
+		const running = deltas.get(docRef.path) ?? NO_DELTA;
+		deltas.set(docRef.path, {
+			total: running.total + delta.total,
+			real: running.real + delta.real,
+		});
+	}
 }
 
 function writeBalances(
@@ -199,24 +299,20 @@ export async function createTransaction(
 	try {
 		return await db.runTransaction(async (tx) => {
 			const data = normalize(input);
+			const targets = targetsOf(data);
 			// Firestore requires every read before the first write.
-			const snaps = await readAll(tx, [
-				accountRef(data.accountId),
-				saldoRef(data.saldoId),
-				categoryRef(data.categoryId),
-			]);
+			const snaps = await readAll(tx, refsOf(targets));
 			const problem = checkTargets(
 				snaps,
-				data,
-				new Set([data.accountId, data.saldoId, data.categoryId]),
+				targets,
+				new Set(targets.map((target) => target.docRef.path)),
 			);
 			if (problem) {
 				return fail<Transaction>(problem);
 			}
 
 			const deltas = new Map<string, Delta>();
-			accumulate(deltas, accountRef(data.accountId), postings(data));
-			accumulate(deltas, saldoRef(data.saldoId), postings(data));
+			accumulate(deltas, postings(data));
 
 			const docRef = ref(COLLECTIONS.transactions).doc();
 			tx.set(docRef, data);
@@ -272,12 +368,18 @@ export async function listTransactions(
 			.orderBy("date", "desc")
 			.get();
 
+		// A transfer belongs to both of its ends, so filtering by either account
+		// (or either saldo) finds it.
 		const matches = snap.docs
 			.map((doc) => withId<Transaction>(doc))
 			.filter(
 				(txn) =>
-					(!filters.accountId || txn.accountId === filters.accountId) &&
-					(!filters.saldoId || txn.saldoId === filters.saldoId) &&
+					(!filters.accountId ||
+						txn.accountId === filters.accountId ||
+						txn.toAccountId === filters.accountId) &&
+					(!filters.saldoId ||
+						txn.saldoId === filters.saldoId ||
+						txn.toSaldoId === filters.saldoId) &&
 					(!filters.categoryId || txn.categoryId === filters.categoryId),
 			);
 		return ok(matches);
@@ -313,30 +415,28 @@ export async function updateTransaction(
 
 			// Both the old and the new targets are needed: reassigning an account
 			// has to credit one document and debit the other.
+			const oldTargets = targetsOf(current);
+			const newTargets = targetsOf(next);
 			const snaps = await readAll(tx, [
-				accountRef(current.accountId),
-				accountRef(next.accountId),
-				saldoRef(current.saldoId),
-				saldoRef(next.saldoId),
-				categoryRef(next.categoryId),
+				...refsOf(oldTargets),
+				...refsOf(newTargets),
 			]);
+			// Only what the transaction did not already point at must be active —
+			// in any role, so reversing a transfer's direction is not a new posting.
+			const kept = new Set(oldTargets.map((target) => target.docRef.path));
 			const reassigned = new Set(
-				[
-					next.accountId === current.accountId ? null : next.accountId,
-					next.saldoId === current.saldoId ? null : next.saldoId,
-					next.categoryId === current.categoryId ? null : next.categoryId,
-				].filter((value): value is string => value !== null),
+				newTargets
+					.map((target) => target.docRef.path)
+					.filter((path) => !kept.has(path)),
 			);
-			const problem = checkTargets(snaps, next, reassigned);
+			const problem = checkTargets(snaps, newTargets, reassigned);
 			if (problem) {
 				return fail<Transaction>(problem);
 			}
 
 			const deltas = new Map<string, Delta>();
-			accumulate(deltas, accountRef(current.accountId), postings(current, -1));
-			accumulate(deltas, saldoRef(current.saldoId), postings(current, -1));
-			accumulate(deltas, accountRef(next.accountId), postings(next));
-			accumulate(deltas, saldoRef(next.saldoId), postings(next));
+			accumulate(deltas, postings(current, -1));
+			accumulate(deltas, postings(next));
 
 			tx.set(docRef, next);
 			writeBalances(tx, snaps, deltas);
@@ -364,14 +464,11 @@ export async function deleteTransaction(
 			}
 
 			const current = withId<Transaction>(snap);
-			const snaps = await readAll(tx, [
-				accountRef(current.accountId),
-				saldoRef(current.saldoId),
-			]);
+			const reversal = postings(current, -1);
+			const snaps = await readAll(tx, refsOf(reversal));
 
 			const deltas = new Map<string, Delta>();
-			accumulate(deltas, accountRef(current.accountId), postings(current, -1));
-			accumulate(deltas, saldoRef(current.saldoId), postings(current, -1));
+			accumulate(deltas, reversal);
 
 			tx.delete(docRef);
 			writeBalances(tx, snaps, deltas);

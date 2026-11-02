@@ -31,7 +31,30 @@
 
 .nav {
 	display: flex;
+	flex: 1;
+	align-items: center;
 	gap: var(--space-5);
+}
+
+/* The last nav item, pushed to the far end; a button, because signing out
+   is a POST, but dressed as one more link. */
+.signOut {
+	margin-left: auto;
+}
+
+.signOutButton {
+	padding: var(--space-2) 0;
+	border: none;
+	border-bottom: 2px solid transparent;
+	background: none;
+	font-size: 0.9375rem;
+	font-weight: 500;
+	color: var(--muted);
+	cursor: pointer;
+}
+
+.signOutButton:hover {
+	color: var(--foreground);
 }
 
 .main {
@@ -52,6 +75,10 @@
 
 	.brand {
 		padding-bottom: 0;
+	}
+
+	.nav {
+		align-self: stretch;
 	}
 
 	.main {

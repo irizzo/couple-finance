@@ -12,10 +12,11 @@ export default defineConfig({
 	},
 	test: {
 		include: ["src/**/*.spec.ts"],
-		// Every caller of `currentMonth` / `today` is a Server Component, so their
-		// "local time" is the server process's. Pinned to the users' own zone, so
-		// the month-boundary specs mean the same thing on any machine.
+		// Deliberately *not* the couple's zone: `month.ts` names São Paulo itself,
+		// and the specs prove it never leans on the server's. Pinned so they mean
+		// the same thing on any machine; west of São Paulo and with no DST, so the
+		// month-boundary instants fall on different dates here and there.
 		// biome-ignore lint/style/useNamingConvention: an environment variable.
-		env: { TZ: "America/Sao_Paulo" },
+		env: { TZ: "Pacific/Honolulu" },
 	},
 });

@@ -62,8 +62,11 @@
 /* --- the real/total pair --- */
 
 /* The two amounts are the heart of this app, so they sit together with the
-   split shortcut between them rather than being two unrelated fields. */
-.amounts {
+   split shortcut between them rather than being two unrelated fields. A
+   transfer's destination pair is boxed the same way, so it reads as one choice
+   set against the origin above it. */
+.amounts,
+.destination {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: flex-start;
@@ -73,7 +76,7 @@
 	border-radius: var(--radius);
 }
 
-.amountHelp {
+.help {
 	flex: 1 1 100%;
 	margin-bottom: calc(-1 * var(--space-2));
 	font-size: 0.8125rem;

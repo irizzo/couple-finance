@@ -15,6 +15,7 @@ import {
 	fromResult,
 	textField,
 } from "./form-state";
+import { requireSession } from "./session";
 
 /**
  * Form adapters for transactions.
@@ -38,6 +39,10 @@ function readInput(formData: FormData): CreateTransactionInput {
 		// Unvalidated on the way in; `enumValue` in the action rejects anything
 		// that is not a real TransactionType and reports it as a field error.
 		type: textField(formData, "type") as TransactionType,
+		// Read whatever the type: the data layer requires them on a transfer and
+		// drops them from anything else.
+		toAccountId: textField(formData, "toAccountId"),
+		toSaldoId: textField(formData, "toSaldoId"),
 	};
 }
 
@@ -45,6 +50,7 @@ export async function createTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
+	await requireSession();
 	const result = await createTransaction(readInput(formData));
 	if (!result.ok) {
 		return fromResult(result, formValues(formData));
@@ -59,6 +65,7 @@ export async function updateTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
+	await requireSession();
 	const result = await updateTransaction(
 		textField(formData, "id"),
 		readInput(formData),
@@ -79,6 +86,7 @@ export async function deleteTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
+	await requireSession();
 	const result = await deleteTransaction(textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");

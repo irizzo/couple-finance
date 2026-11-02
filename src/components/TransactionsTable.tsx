@@ -51,6 +51,38 @@ function NameCell({ entity, archivedLabel }: NameCellProps) {
 	);
 }
 
+interface EndsCellProps {
+	lookup: Map<string, NonNullable<NameCellProps["entity"]>>;
+	from: string;
+	/** A transfer's destination; `undefined` for anything else. */
+	to: string | undefined;
+	archivedLabel: string;
+}
+
+/**
+ * A transfer names both of its ends. An end it keeps — the same account, moving
+ * between saldos — is named once: "Nubank → Nubank" says nothing more.
+ */
+function EndsCell({ lookup, from, to, archivedLabel }: EndsCellProps) {
+	return (
+		<>
+			<NameCell archivedLabel={archivedLabel} entity={lookup.get(from)} />
+			{to !== undefined && to !== from && (
+				<>
+					<span> → </span>
+					<NameCell archivedLabel={archivedLabel} entity={lookup.get(to)} />
+				</>
+			)}
+		</>
+	);
+}
+
+const TYPE_BADGES: Record<TransactionType, { label: string; tone: string }> = {
+	[TransactionType.EXPENSE]: { label: "Despesa", tone: styles.expense },
+	[TransactionType.INCOME]: { label: "Receita", tone: styles.income },
+	[TransactionType.TRANSFER]: { label: "Transferência", tone: styles.transfer },
+};
+
 export function TransactionsTable({
 	transactions,
 	accounts,
@@ -90,21 +122,37 @@ export function TransactionsTable({
 						</tr>
 					) : (
 						transactions.map((txn) => {
-							const expense = txn.type === TransactionType.EXPENSE;
+							const transfer = txn.type === TransactionType.TRANSFER;
+							// Falls back to "Despesa" for a type this build doesn't know,
+							// which is what the form preselects for one too.
+							const badge =
+								TYPE_BADGES[txn.type] ?? TYPE_BADGES[TransactionType.EXPENSE];
 							return (
-								<tr key={txn.id}>
+								<tr
+									key={txn.id}
+									className={
+										txn.type === TransactionType.INCOME ||
+										txn.realAmount === txn.totalAmount
+											? ""
+											: styles.splitTransaction
+									}
+								>
 									<td className={styles.date}>{formatDayMonth(txn.date)}</td>
 									<td className={styles.description}>{txn.description}</td>
 									<td className={styles.tag}>
-										<NameCell
+										<EndsCell
 											archivedLabel="arquivada"
-											entity={accounts.get(txn.accountId)}
+											from={txn.accountId}
+											lookup={accounts}
+											to={transfer ? txn.toAccountId : undefined}
 										/>
 									</td>
 									<td className={styles.tag}>
-										<NameCell
+										<EndsCell
 											archivedLabel="arquivado"
-											entity={saldos.get(txn.saldoId)}
+											from={txn.saldoId}
+											lookup={saldos}
+											to={transfer ? txn.toSaldoId : undefined}
 										/>
 									</td>
 									<td className={styles.tag}>
@@ -114,12 +162,8 @@ export function TransactionsTable({
 										/>
 									</td>
 									<td>
-										<span
-											className={`${styles.badge} ${
-												expense ? styles.expense : styles.income
-											}`}
-										>
-											{expense ? "Despesa" : "Receita"}
+										<span className={`${styles.badge} ${badge.tone}`}>
+											{badge.label}
 										</span>
 									</td>
 									<td className={styles.numeric}>

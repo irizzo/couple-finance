@@ -26,6 +26,8 @@ const BLANK: TransactionFormValues = {
 	saldoId: "",
 	categoryId: "",
 	type: "expense",
+	toAccountId: "",
+	toSaldoId: "",
 };
 
 export default async function NewTransactionPage({
@@ -113,6 +115,8 @@ export default async function NewTransactionPage({
 					saldoId: source.data.saldoId,
 					categoryId: source.data.categoryId,
 					type: source.data.type,
+					toAccountId: source.data.toAccountId ?? "",
+					toSaldoId: source.data.toSaldoId ?? "",
 				}
 			: { ...BLANK, date: defaultDate };
 

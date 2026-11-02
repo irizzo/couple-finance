@@ -13,6 +13,7 @@ import {
 	fromResult,
 	textField,
 } from "./form-state";
+import { requireSession } from "./session";
 
 /**
  * Form adapters for categories. Name and description only — a category carries
@@ -24,6 +25,7 @@ export async function createCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
+	await requireSession();
 	const result = await createCategory({
 		name: textField(formData, "name"),
 		description: textField(formData, "description"),
@@ -38,6 +40,7 @@ export async function updateCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
+	await requireSession();
 	const result = await updateCategory(textField(formData, "id"), {
 		name: textField(formData, "name"),
 		// The row always submits the input, so `""` here means "cleared".
@@ -53,6 +56,7 @@ export async function archiveCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
+	await requireSession();
 	const result = await archiveCategory(textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
@@ -64,6 +68,7 @@ export async function unarchiveCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
+	await requireSession();
 	const result = await unarchiveCategory(textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");

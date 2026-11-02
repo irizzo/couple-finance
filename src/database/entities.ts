@@ -13,9 +13,8 @@ import {
 import type { ListOptions } from "@/types";
 
 /**
- * Shared implementation behind the `*.actions.ts` files. Those files carry the
- * `"use server"` directive and may therefore only export async functions, so
- * every reusable type and helper has to live outside of them.
+ * Shared implementation behind the `*.actions.ts` files, which keep to one
+ * entity each and re-export none of this.
  */
 
 /**

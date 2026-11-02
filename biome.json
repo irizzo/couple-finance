@@ -46,6 +46,21 @@
 			}
 		},
 		{
+			"includes": [
+				"src/proxy.ts",
+				"src/app/_actions/auth.ts",
+				"src/app/_actions/session.ts",
+				"src/database/firebase.config.js"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noProcessEnv": "off"
+					}
+				}
+			}
+		},
+		{
 			"includes": ["**/*.spec.ts"],
 			"linter": {
 				"rules": {

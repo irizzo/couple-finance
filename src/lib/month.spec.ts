@@ -11,6 +11,14 @@ import {
 
 /** 22:00 on 31 October in São Paulo (UTC−3): already 1 November in UTC. */
 const LATE_ON_THE_LAST_DAY = new Date("2026-11-01T01:00:00Z");
+/** 00:30 on 1 November in São Paulo: still 31 October in the specs' own zone. */
+const EARLY_ON_THE_FIRST_DAY = new Date("2026-11-01T03:30:00Z");
+
+/** The instant's calendar date in the zone the specs run in (see the config). */
+function processDate(instant: Date): string {
+	const day = (part: number) => String(part).padStart(2, "0");
+	return `${instant.getFullYear()}-${day(instant.getMonth() + 1)}-${day(instant.getDate())}`;
+}
 
 describe("the clock-reading helpers", () => {
 	beforeEach(() => {
@@ -21,11 +29,19 @@ describe("the clock-reading helpers", () => {
 		vi.useRealTimers();
 	});
 
-	it("read local date parts, not UTC ones", () => {
+	it("read the date in São Paulo, not in UTC", () => {
 		// Not vacuous: in UTC this instant is already the next month.
 		expect(LATE_ON_THE_LAST_DAY.toISOString().slice(0, 7)).toBe("2026-11");
 		expect(currentMonth()).toBe("2026-10");
 		expect(today()).toBe("2026-10-31");
+	});
+
+	it("read the date in São Paulo, not in the server's own zone", () => {
+		vi.setSystemTime(EARLY_ON_THE_FIRST_DAY);
+		// Not vacuous: where the specs run, this instant is still the last month.
+		expect(processDate(EARLY_ON_THE_FIRST_DAY)).toBe("2026-10-31");
+		expect(currentMonth()).toBe("2026-11");
+		expect(today()).toBe("2026-11-01");
 	});
 
 	it("resolveMonth passes a well-formed month through", () => {
@@ -78,7 +94,7 @@ describe("monthBounds", () => {
 });
 
 describe("formatMonthLabel", () => {
-	// The specs run at UTC−3, where midnight UTC on the 1st is still the previous
+	// The specs run at UTC−10, where midnight UTC on the 1st is still the previous
 	// month locally — so these also prove the formatter is pinned to UTC.
 	it.each([
 		["2026-10", "Outubro de 2026"],

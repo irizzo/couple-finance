@@ -1,6 +1,7 @@
-export enum TransactionType { // despesa ou receita
+export enum TransactionType { // despesa, receita ou transferência
 	EXPENSE = "expense",
 	INCOME = "income",
+	TRANSFER = "transfer",
 }
 
 export interface Transaction {
@@ -9,10 +10,19 @@ export interface Transaction {
 	description: string;
 	totalAmount: number;
 	realAmount: number;
+	/** On a transfer, the origin: where the money leaves from. */
 	accountId: string;
 	saldoId: string;
 	categoryId: string;
 	type: TransactionType;
+	/**
+	 * Transfer only: where the money lands. Stored on transfers and absent on
+	 * every other type, so `undefined` here is a real state rather than a missing
+	 * backfill. The destination may repeat the origin's account or its saldo, but
+	 * not both — that would move nothing.
+	 */
+	toAccountId?: string;
+	toSaldoId?: string;
 }
 
 /**

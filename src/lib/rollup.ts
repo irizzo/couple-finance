@@ -88,6 +88,7 @@ export interface MonthSummary {
 	income: AmountPair;
 	/** Signed: income minus expenses. Negative means the month ran at a loss. */
 	net: AmountPair;
+	/** Every transaction, transfers included — they are in no sum above. */
 	count: number;
 }
 
@@ -163,7 +164,8 @@ export function sumBy(
  *
  * **Expenses only.** Netting a receita against a target would let a salary
  * deposit silently pay for an overrun, which is the opposite of what a plan is
- * for; income is reported separately on the ledger.
+ * for; income is reported separately on the ledger. A transfer out of a saldo
+ * is not spend either — the money still exists, under another saldo.
  *
  * Since Phase 1 the two dimensions are siblings, so this is one flat list rather
  * than a tree, and the saldo and category tables are **not reconciled**: they
@@ -285,9 +287,11 @@ export function monthSummary(transactions: Transaction[]): MonthSummary {
 	for (const txn of transactions) {
 		if (txn.type === TransactionType.EXPENSE) {
 			expenses = add(expenses, txn);
-		} else {
+		} else if (txn.type === TransactionType.INCOME) {
 			income = add(income, txn);
 		}
+		// A transfer only moves money between the app's own accounts and saldos:
+		// nothing was earned or spent, so it is counted but summed nowhere.
 	}
 
 	return {

@@ -33,6 +33,10 @@
 	border-bottom: none;
 }
 
+.splitTransaction {
+	background: var(--surface-raised);
+}
+
 .date {
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
@@ -87,6 +91,11 @@
 
 .income {
 	color: var(--positive);
+}
+
+/* Neither gained nor spent, so neither of the signed colours. */
+.transfer {
+	color: var(--accent);
 }
 
 .empty {

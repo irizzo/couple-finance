@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useRef } from "react";
+import { useActionState, useRef, useState } from "react";
 import { type FormAction, IDLE_FORM_STATE } from "@/app/_actions/form-state";
 import controls from "./controls.module.css";
 import { Field } from "./Field";
@@ -40,6 +40,9 @@ export interface TransactionFormValues {
 	saldoId: string;
 	categoryId: string;
 	type: string;
+	/** `""` unless the transaction is a transfer. */
+	toAccountId: string;
+	toSaldoId: string;
 }
 
 /**
@@ -47,9 +50,12 @@ export interface TransactionFormValues {
  *
  * Inputs are uncontrolled so `defaultValue` can come straight from
  * `state.values` after a rejected submit, which is how the user's typing
- * survives a validation error. The one piece of interactivity — keeping
- * `realAmount` in step with `totalAmount` — is done imperatively through refs
- * for the same reason: controlled state would fight those defaults.
+ * survives a validation error. Keeping `realAmount` in step with `totalAmount`
+ * is done imperatively through refs for the same reason: controlled state would
+ * fight those defaults. The type radios stay uncontrolled too; the only state
+ * here mirrors which one is checked, to decide whether a transfer's destination
+ * selects are rendered at all — hidden but present, their `required` would
+ * block saving an expense.
  *
  * The saldo and categoria selects are independent. Since Phase 1 a category
  * does not belong to a saldo, so neither choice constrains the other.
@@ -94,7 +100,15 @@ export function TransactionForm({
 		realEdited.current = true;
 	}
 
-	const type = value("type");
+	// The radios' defaults come from `initial` / `state.values` like every other
+	// input; `type` only follows the user's clicks, to show the destination.
+	const defaultType = value("type");
+	const [type, setType] = useState(defaultType);
+	const transfer = type === "transfer";
+
+	function selectType(event: React.ChangeEvent<HTMLInputElement>) {
+		setType(event.target.value);
+	}
 
 	return (
 		<form action={submit} className={styles.form}>
@@ -141,9 +155,12 @@ export function TransactionForm({
 					<div className={styles.radios}>
 						<label className={styles.radio} htmlFor="type">
 							<input
-								defaultChecked={type !== "income"}
+								defaultChecked={
+									defaultType !== "income" && defaultType !== "transfer"
+								}
 								id="type"
 								name="type"
+								onChange={selectType}
 								type="radio"
 								value="expense"
 							/>
@@ -151,20 +168,32 @@ export function TransactionForm({
 						</label>
 						<label className={styles.radio} htmlFor="type-income">
 							<input
-								defaultChecked={type === "income"}
+								defaultChecked={defaultType === "income"}
 								id="type-income"
 								name="type"
+								onChange={selectType}
 								type="radio"
 								value="income"
 							/>
 							Receita
+						</label>
+						<label className={styles.radio} htmlFor="type-transfer">
+							<input
+								defaultChecked={defaultType === "transfer"}
+								id="type-transfer"
+								name="type"
+								onChange={selectType}
+								type="radio"
+								value="transfer"
+							/>
+							Transferência
 						</label>
 					</div>
 				</fieldset>
 			</div>
 
 			<div className={styles.amounts}>
-				<p className={styles.amountHelp}>
+				<p className={styles.help}>
 					<strong>Total</strong> é o que saiu da conta. <strong>Real</strong> é
 					a sua parte — numa conta de internet de R$ 90 dividida ao meio, o real
 					é R$ 45. O real nunca pode ser maior que o total.
@@ -224,7 +253,11 @@ export function TransactionForm({
 
 			<div className={styles.row}>
 				<div className={styles.grow}>
-					<Field error={fieldError("accountId")} label="Conta" name="accountId">
+					<Field
+						error={fieldError("accountId")}
+						label={transfer ? "Conta de origem" : "Conta"}
+						name="accountId"
+					>
 						<select
 							aria-invalid={Boolean(fieldError("accountId"))}
 							defaultValue={value("accountId")}
@@ -242,7 +275,11 @@ export function TransactionForm({
 					</Field>
 				</div>
 				<div className={styles.grow}>
-					<Field error={fieldError("saldoId")} label="Saldo" name="saldoId">
+					<Field
+						error={fieldError("saldoId")}
+						label={transfer ? "Saldo de origem" : "Saldo"}
+						name="saldoId"
+					>
 						<select
 							aria-invalid={Boolean(fieldError("saldoId"))}
 							defaultValue={value("saldoId")}
@@ -282,6 +319,60 @@ export function TransactionForm({
 					</Field>
 				</div>
 			</div>
+
+			{transfer && (
+				<div className={styles.destination}>
+					<p className={styles.help}>
+						O destino pode repetir a <strong>conta</strong> ou o{" "}
+						<strong>saldo</strong> da origem — para mover dinheiro entre saldos
+						da mesma conta, ou entre contas do mesmo saldo — mas não os dois.
+					</p>
+					<div className={styles.grow}>
+						<Field
+							error={fieldError("toAccountId")}
+							label="Conta de destino"
+							name="toAccountId"
+						>
+							<select
+								aria-invalid={Boolean(fieldError("toAccountId"))}
+								defaultValue={value("toAccountId")}
+								id="toAccountId"
+								name="toAccountId"
+								required={true}
+							>
+								<option value="">Selecione…</option>
+								{accounts.map((option) => (
+									<option key={option.id} value={option.id}>
+										{option.label}
+									</option>
+								))}
+							</select>
+						</Field>
+					</div>
+					<div className={styles.grow}>
+						<Field
+							error={fieldError("toSaldoId")}
+							label="Saldo de destino"
+							name="toSaldoId"
+						>
+							<select
+								aria-invalid={Boolean(fieldError("toSaldoId"))}
+								defaultValue={value("toSaldoId")}
+								id="toSaldoId"
+								name="toSaldoId"
+								required={true}
+							>
+								<option value="">Selecione…</option>
+								{saldos.map((option) => (
+									<option key={option.id} value={option.id}>
+										{option.label}
+									</option>
+								))}
+							</select>
+						</Field>
+					</div>
+				</div>
+			)}
 
 			<div className={styles.actions}>
 				<SubmitButton pendingLabel="Salvando…">{submitLabel}</SubmitButton>

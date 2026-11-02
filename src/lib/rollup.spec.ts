@@ -37,6 +37,15 @@ function income(amount: number, fields: Partial<Transaction> = {}) {
 	return expense(amount, amount, { type: TransactionType.INCOME, ...fields });
 }
 
+function transfer(amount: number, fields: Partial<Transaction> = {}) {
+	return expense(amount, amount, {
+		type: TransactionType.TRANSFER,
+		toAccountId: "poupanca",
+		toSaldoId: "reserva",
+		...fields,
+	});
+}
+
 function target(id: string, fields: Partial<BudgetTarget> = {}): BudgetTarget {
 	return { id, name: id, description: "", archived: false, ...fields };
 }
@@ -100,6 +109,15 @@ describe("monthSummary", () => {
 		]);
 		expect(summary.expenses).toEqual({ total: 0.3, real: 0.3 });
 	});
+
+	it("counts a transfer without reading it as income or spend", () => {
+		expect(monthSummary([expense(90, 45), transfer(500)])).toEqual({
+			expenses: { total: 90, real: 45 },
+			income: { total: 0, real: 0 },
+			net: { total: -90, real: -45 },
+			count: 2,
+		});
+	});
 });
 
 describe("buildBudgetRows", () => {
@@ -126,6 +144,23 @@ describe("buildBudgetRows", () => {
 				[expense(30, 30), income(50)],
 			),
 			"mercado",
+		);
+		expect(row.spent).toEqual({ total: 30, real: 30 });
+		expect(row.remaining).toBe(70);
+	});
+
+	it.each([
+		["saldo", "essenciais"],
+		["category", "mercado"],
+	] as const)("does not count a transfer as %s spend", (scope, targetId) => {
+		const row = rowFor(
+			buildBudgetRows({
+				scope,
+				entities: [target(targetId)],
+				budgets: [budget(targetId, 100, scope)],
+				transactions: [expense(30, 30), transfer(500)],
+			}),
+			targetId,
 		);
 		expect(row.spent).toEqual({ total: 30, real: 30 });
 		expect(row.remaining).toBe(70);

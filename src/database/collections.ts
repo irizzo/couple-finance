@@ -15,9 +15,8 @@ export const COLLECTIONS = {
  * enforces it in Firestore itself. Saving becomes an idempotent `set` with no
  * duplicate-detection query and no transaction.
  *
- * Lives here rather than in `budgets.actions.ts` because a `"use server"` module
- * may only export async functions, and an id derivation has no business being
- * awaited.
+ * Lives here, beside the collection names, rather than in `budgets.actions.ts`:
+ * the id is part of the collection's schema, not of any one operation on it.
  */
 export function budgetDocId(budget: {
 	month: string;
