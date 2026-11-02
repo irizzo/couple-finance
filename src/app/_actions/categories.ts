@@ -25,8 +25,8 @@ export async function createCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await createCategory({
+	const user = await requireUser();
+	const result = await createCategory(user, {
 		name: textField(formData, "name"),
 		description: textField(formData, "description"),
 	});
@@ -40,8 +40,8 @@ export async function updateCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await updateCategory(textField(formData, "id"), {
+	const user = await requireUser();
+	const result = await updateCategory(user, textField(formData, "id"), {
 		name: textField(formData, "name"),
 		// The row always submits the input, so `""` here means "cleared".
 		description: textField(formData, "description"),
@@ -56,8 +56,8 @@ export async function archiveCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await archiveCategory(textField(formData, "id"));
+	const user = await requireUser();
+	const result = await archiveCategory(user, textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
 	}
@@ -68,8 +68,8 @@ export async function unarchiveCategoryForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await unarchiveCategory(textField(formData, "id"));
+	const user = await requireUser();
+	const result = await unarchiveCategory(user, textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
 	}

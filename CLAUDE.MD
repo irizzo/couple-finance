@@ -1,7 +1,7 @@
 # Couple Finance — spec and current state
 
-> Updated 2026-11-02, after Phase U2 of the new-features track (on top of
-> commit `49ac92f`, which is U1). This file is the project's spec **and**
+> Updated 2026-11-02, after Phase U3 of the new-features track (on top of
+> commit `8360945`, which is U2). This file is the project's spec **and**
 > the summary of where it stands: every convention below is in force, and every
 > decision worth knowing is recorded here with its reason. The plans and
 > implementation logs beside it in `docs/` are history (see "Docs map" at the
@@ -37,8 +37,9 @@ transactions I can just copy them instead of filling the information from
 scratch).
 
 All four are met. Beyond them, the app gained a `description` on accounts,
-saldos and categories, transfers between accounts and saldos, a shared-password
-gate, and a Vitest suite over the pure helpers.
+saldos and categories, transfers between accounts and saldos, per-user sign-in
+with each person's data scoped to them, and a Vitest suite over the pure
+helpers.
 
 ## STACK AND COMMANDS
 
@@ -78,7 +79,7 @@ convenience.
 | **Plan, phases 1–7** | 1: categories decoupled from saldos. 2: app shell, design tokens, `src/lib`, form plumbing. 3: settings CRUD. 4: the monthly ledger. 5: create, edit, duplicate and delete transactions. 6: budgets by saldo and by category. 7: empty and error states, the 404 and the error boundary, dead code and the client `firebase` package removed, lint at zero errors. |
 | **Improvement track, phases A–E** | A–B: `description` on accounts, saldos and categories, in the data layer and then the UI. C: four defects fixed (below). D: Vitest over `src/lib`. E: Next 16.2.9 → 16.4.3 for published advisories, São Paulo time pinned in code, the shared-password gate, the data layer taken off the Server Action list, the Admin credential read from the environment. |
 | **Transfers** (commit `10d130c`) | A third transaction type that moves money between two account+saldo pairs. **Recorded in neither log**: this file is its only documentation. |
-| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done**: per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. The data is still global until U3 (ownership) and U4 (migration). |
+| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done**: an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. The real data is invisible until U4 stamps it. |
 
 Every phase ended with `tsc`, lint and build clean, and from Phase 3 on, every
 phase that changed runtime behaviour was also checked by an end-to-end harness
@@ -110,10 +111,11 @@ the layout reads the session cookie to decide whether to draw the nav.
 
 The Firestore data layer is built. Entities live in five root collections —
 `accounts`, `saldos`, `categories`, `transactions`, `budgets` — and are reached
-only through the `*.actions.ts` modules below. A sixth, `users` (since Phase
-U1), holds the two people; sign-up, sign-in and the session check read it. Those are server code, not
-Server Actions: the browser reaches them only through the form adapters in
-`src/app/_actions`, which check the session first.
+only through the `*.actions.ts` modules below. Since Phase U3 every document in
+them belongs to one user (see "Ownership"). A sixth, `users` (since Phase U1),
+holds the two people; sign-up, sign-in and the session check read it. Those
+are server code, not Server Actions: the browser reaches them only through the
+form adapters in `src/app/_actions`, which check the session first.
 
 **There is one Firestore database, and it holds the couple's real data.** There
 is no dev or test copy. Anything that writes to it for verification must use
@@ -125,7 +127,7 @@ its own fixtures and leave every real document byte-identical (see TOOLING).
 | --- | --- |
 | `src/database/db.ts` | Exports the Firestore handle. **Admin SDK only** — never the client `firebase` package. |
 | `src/database/*.actions.ts` | One file per entity, each opening with `import "server-only"`. The only API to Firestore, and deliberately **not** `"use server"`: every export of a `"use server"` module is an endpoint anyone can POST to, and these carry no session check. |
-| `src/database/entities.ts` | Shared CRUD behind accounts/saldos/categories. Two shapes: `createNamedEntity`/`updateNamedEntity` (name + description — categories) and `createBalanceEntity`/`updateBalanceEntity` (name + description + two balances — accounts and saldos, which are structurally identical, so their logic exists once). Also `assertActive(collection, id, label)`, the shared exists-and-not-archived guard. |
+| `src/database/entities.ts` | Shared CRUD behind accounts/saldos/categories. Two shapes: `createNamedEntity`/`updateNamedEntity` (name + description — categories) and `createBalanceEntity`/`updateBalanceEntity` (name + description + two balances — accounts and saldos, which are structurally identical, so their logic exists once). Also `owned(snap, owner)`, the exists-and-belongs-to check every by-id access goes through, and `assertActive(owner, collection, id, label)`, the shared owned-and-not-archived guard. Every helper takes the owner first. |
 | `src/database/users.actions.ts` | The two users: `createUser`, `findCredentials`, `loadSessionUser`, `getPartnerName`, `signUpOpen`. See "Users" below. |
 | `src/database/validators.ts` | Hand-rolled validation primitives, no dependency. **Must stay pure**: `src/lib` imports `round2` from it, and the client form components import `TEXT_MAX_LENGTH`, so a Firestore import here would leak into the browser bundle. |
 | `src/database/result.ts` | The `ActionResult<T>` envelope. |
@@ -168,8 +170,8 @@ export.
   first write — keep that read-phase/write-phase shape.
 * **Soft delete.** Accounts, saldos and categories expose `archive`/`unarchive`,
   never a delete — transactions keep referencing them. Always write
-  `archived: false` on create: a `where("archived", "==", false)` query silently
-  skips documents missing the field. Archived entities reject *new* postings but
+  `archived: false` on create: `listEntities` counts only `archived === false`
+  as active, so a document missing the field drops out of every active list. Archived entities reject *new* postings but
   stay editable, so archiving never freezes history. On an edit, only a target
   the transaction did not already point at, in any role, must be active.
 * **Transactions hard-delete.** Nothing references them, and deleting one
@@ -188,9 +190,11 @@ export.
   characters (`TEXT_MAX_LENGTH`, which the inputs' `maxLength` also uses, so the
   two caps cannot drift) and stored trimmed (`trimmedText`). Documents that
   predated the field were backfilled once, by a throwaway script since deleted.
-* **No composite indexes.** The selective `date` range runs in Firestore
-  (ISO `YYYY-MM-DD` strings sort lexicographically); `archived` and id-equality
-  filters are applied in memory. Personal-scale data, zero index setup.
+* **No composite indexes.** Each query has at most one Firestore filter field:
+  the `date` range for transactions (ISO `YYYY-MM-DD` strings sort
+  lexicographically), `month ==` for budgets, `ownerId ==` for entity lists.
+  Everything else (the owner, `archived`, the id filters) is applied in
+  memory. Personal-scale data, zero index setup.
 * **Saldo and category are independent tags.** A transaction carries both, but
   any category may pair with any saldo — neither nests inside the other. Each
   reference is validated only for existence and active status on write.
@@ -225,6 +229,33 @@ export.
 * `realAmount` may never exceed `totalAmount`; money is rounded to 2 decimals on
   every balance write.
 
+### Ownership (since Phase U3)
+
+* **The owner is an argument.** Every data-layer function takes `owner: Owner`
+  first (`SessionUser` satisfies it), and `src/database` still knows nothing
+  about sessions. Callers pass the user from `requireUser()` as it is.
+* **`ownerId` is always written, and only from that argument.** Every create
+  writes `ownerId: owner.id` beside `archived: false`; transactions also write
+  `shared` (always `false` until U6). No `Create*Input`/`Update*Input` type
+  carries `ownerId`, and `normalize` builds the stored transaction field by
+  field, so a smuggled `ownerId` is never written. Firestore refuses to store
+  `undefined`, so no unowned document can be created.
+* **Someone else's document reads exactly like a missing one.** Every by-id
+  read or write checks `owned(snap, owner)` and returns the same `notFound`
+  message, so probing an id reveals nothing. An owner with no id matches
+  nothing, never the unstamped documents.
+* **A transaction may only point at its owner's documents.** `checkTargets`
+  reports a foreign account, saldo, category or transfer destination as "was
+  not found". That is what stops a forged form from posting to, or
+  transferring into, the partner's account.
+* **Budgets are per user.** `setBudget` plans only the owner's active targets
+  (`assertActive(owner, …)`), `copyBudgets` copies only the owner's plans onto
+  the owner's targets, and every budget stores `ownerId` for listing.
+  `budgetDocId` is unchanged: target ids are globally unique and each target
+  has one owner, so the id needs no owner in it.
+* **Documents without `ownerId` belong to no one.** Until the U4 migration
+  stamps them, the real data written before U3 is invisible to every user.
+
 ### Users (since Phase U1)
 
 * **Exactly two users.** `createUser` hashes the password first (scrypt is slow,
@@ -256,7 +287,7 @@ routes, `FormData`, React or sessions.
 | Layer | Purpose |
 | --- | --- |
 | `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`), transaction aggregation (`rollup.ts`), session signing (`session.ts`), password hashing (`password.ts`). Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. **The exception is `password.ts`**: it is Node-only (`node:crypto` scrypt) and deliberately slow, so only the users data layer and the auth adapters import it, never the proxy or a client component. Each has a `*.spec.ts` beside it. |
-| `src/app/_actions/*.ts` | Form adapters — with `auth.ts`, **the app's only Server Actions**. The data-layer functions take typed objects, but `useActionState` needs `(prevState, formData)`. Each adapter calls `requireUser()` first, then parses `FormData`, calls the data layer, calls `revalidatePath`, and returns a `FormState`. `form-state.ts` (the shared shape) and `session.ts` (`getSessionUser`, `requireUser`, `startSession`, `signUpAvailable`) are deliberately *not* `"use server"`. `auth.ts` signs up, in and out. |
+| `src/app/_actions/*.ts` | Form adapters — with `auth.ts`, **the app's only Server Actions**. The data-layer functions take typed objects, but `useActionState` needs `(prevState, formData)`. Each adapter starts with `const user = await requireUser();`, then parses `FormData`, calls the data layer with `user` as the owner, calls `revalidatePath`, and returns a `FormState`. `form-state.ts` (the shared shape) and `session.ts` (`getSessionUser`, `requireUser`, `startSession`, `signUpAvailable`) are deliberately *not* `"use server"`. `auth.ts` signs up, in and out. |
 | `src/proxy.ts` | The optimistic gate in front of every route except `/login` and `/signup`. See AUTH below. |
 | `src/components/*.tsx` | Shared presentation — form primitives, tables, navigation. |
 
@@ -426,7 +457,8 @@ Behaviour specific to one screen, decided along the way.
 Per-user sign-in since Phase U2: each of the two people has a username and
 their own password. The client `firebase` package is ruled out above, so
 Firebase Auth is too; users live in Firestore (see "Users" under DATA LAYER).
-**The data is still global until U3/U4**: whoever signs in sees everything.
+Since U3 each person reaches only their own data (see "Ownership"); the real
+data has no owner until U4, so for now it is invisible to everyone.
 
 * **A session names its user.** `src/lib/session.ts` signs
   `<userId>.<sessionVersion>.<expiry ms>.<hex HMAC-SHA256>` with `AUTH_SECRET`
@@ -453,8 +485,9 @@ Firebase Auth is too; users live in Firestore (see "Users" under DATA LAYER).
   redirects to `/login`. A path the matcher skips also skips the actions posted
   to it, Next forwards an action id posted to *any* page to the page that owns
   it, and a deleted user's or an old password's token passes the proxy — so
-  **`await requireUser()` is the first line of every adapter and of every page
-  that reads data**. A new adapter or page without it is open; nothing else
+  **`const user = await requireUser();` is the first line of every adapter and
+  of every page that reads data**, and `user` is what scopes every data-layer
+  call after it. A new adapter or page without it is open; nothing else
   fails.
 * **It fails closed and loudly.** A missing or short `AUTH_SECRET` throws on
   the first request, not the first sign-in. A failed user read reads as signed
@@ -554,6 +587,17 @@ end. The method that works, and the traps it took to find it:
   in an empty far-future month (2031 was used), refuse to start if it is not
   empty, delete transactions through the delete action so balances unwind, and
   compare every real document byte for byte afterwards.
+* **Two users need a fixture couple** (since U3): insert both through the
+  Admin SDK with `hashPassword`, linked by `partnerId` to each other only, sign
+  them in through `/login`, and delete everything they own by `ownerId`. With
+  the owner's user document now real, fingerprint `users` too. Forge an attack
+  by taking your own row's form (its `$ACTION_*` fields) and posting the other
+  user's id. Keep failure details free of real data: a failing check that
+  prints a document prints the couple's finances. Match hidden inputs by
+  `name` and `value`, not attribute order: React writes `type` first.
+* **Mutation-check the harness** when the claim is a refusal: break the guard,
+  rebuild, and confirm the checks turn red (U3: 38 red with `owned` reduced to
+  "exists", 19 with only `checkTargets`' owner test removed).
 * **Running a data-layer module outside Next** needs Node 24's type stripping,
   `--experimental-transform-types` for the `TransactionType` enum, and a small
   resolve hook loaded with `--import` that maps `@/` onto `src/`. Since the
@@ -598,19 +642,21 @@ Raise them with the owner rather than building them unasked.
 
 **All four goals and both planned tracks are complete, and transfers have been
 added since.** A third track, new features (two users, shared expenses, a
-shared dashboard), is under way: U1 and U2 of 8 are done. **Do not deploy,
-and do not let the partner sign up, until U4 has migrated the real data**: the
-data is still global, so a second account would see and edit everything. Only
-the owner signs up now. Every page reports a failed `ActionResult` in a banner
+shared dashboard), is under way: U1, U2 and U3 of 8 are done, and the owner
+has signed up. **Every read and write is now scoped to its user, and the real
+data has no `ownerId` yet, so it is invisible until U4 stamps it** (nothing is
+lost). **Do not deploy, and do not let the partner sign up, until U4 has
+migrated and checked the real data.** Avoid entering records before U4 too:
+they would be kept, but would sit beside the old ones once both are visible. Every page reports a failed `ActionResult` in a banner
 and has a first-run empty state pointing at what must be created first. Each
 person signs in with their own username and password: `/login` and `/signup`
 are the only open pages, every Server Action and data page checks the user
 against Firestore, and "Sair" in the nav signs out.
 
 Everything is verified end to end against real Firestore, including the
-split-bill arithmetic and an overrun against a category target, **except
-transfers**, whose balance postings have so far only been type-checked, read
-and covered by specs in `src/lib`.
+split-bill arithmetic, an overrun against a category target, isolation between
+two users, and (since U3, under a fixture user) a transfer created, edited into
+an expense and deleted with every balance back where it started.
 
 ### Still open
 
@@ -619,10 +665,6 @@ and covered by specs in `src/lib`.
 sign up, and HTTPS, since the cookie is `Secure` in production. What remains is
 known and accepted:
 
-* **Transfers need one end-to-end pass against real Firestore.** Create one
-  between two accounts under one saldo, and check that the saldo's balances do
-  not move. Edit it into an expense, then delete it, and confirm all four
-  balances return to where they started.
 * **Sign-in has no rate limit**, and a copied session cookie outlives "Sair"
   until it expires or the user's `sessionVersion` changes (see AUTH).
 * **A stale cookie is not cleared.** Pages cannot set cookies, so a token whose

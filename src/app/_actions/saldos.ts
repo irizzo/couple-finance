@@ -28,8 +28,8 @@ export async function createSaldoForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await createSaldo({
+	const user = await requireUser();
+	const result = await createSaldo(user, {
 		name: textField(formData, "name"),
 		description: textField(formData, "description"),
 		initialAmount: parseAmount(formData.get("initialAmount")),
@@ -44,8 +44,8 @@ export async function updateSaldoForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await updateSaldo(textField(formData, "id"), {
+	const user = await requireUser();
+	const result = await updateSaldo(user, textField(formData, "id"), {
 		name: textField(formData, "name"),
 		// The row always submits the input, so `""` here means "cleared".
 		description: textField(formData, "description"),
@@ -61,8 +61,8 @@ export async function archiveSaldoForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await archiveSaldo(textField(formData, "id"));
+	const user = await requireUser();
+	const result = await archiveSaldo(user, textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
 	}
@@ -73,8 +73,8 @@ export async function unarchiveSaldoForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await unarchiveSaldo(textField(formData, "id"));
+	const user = await requireUser();
+	const result = await unarchiveSaldo(user, textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
 	}

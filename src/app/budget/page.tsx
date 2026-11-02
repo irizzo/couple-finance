@@ -23,7 +23,7 @@ interface BudgetPageProps {
 }
 
 export default async function BudgetPage({ searchParams }: BudgetPageProps) {
-	await requireUser();
+	const user = await requireUser();
 	const { month: requested } = await searchParams;
 	const month = resolveMonth(requested);
 	const { from, to } = monthBounds(month);
@@ -31,10 +31,10 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
 	// Archived targets are included so that spend already charged to one stays
 	// visible; `buildBudgetRows` drops the archived rows that carry no money.
 	const [budgets, transactions, saldos, categories] = await Promise.all([
-		listBudgets(month),
-		listTransactions({ from, to }),
-		listSaldos({ includeArchived: true }),
-		listCategories({ includeArchived: true }),
+		listBudgets(user, month),
+		listTransactions(user, { from, to }),
+		listSaldos(user, { includeArchived: true }),
+		listCategories(user, { includeArchived: true }),
 	]);
 
 	const header = (

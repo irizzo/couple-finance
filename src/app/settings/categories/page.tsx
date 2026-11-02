@@ -32,10 +32,10 @@ interface CategoriesPageProps {
 export default async function CategoriesPage({
 	searchParams,
 }: CategoriesPageProps) {
-	await requireUser();
+	const user = await requireUser();
 	const { archived } = await searchParams;
 	const includeArchived = archived === "1";
-	const result = await listCategories({ includeArchived });
+	const result = await listCategories(user, { includeArchived });
 
 	return (
 		<div className={styles.page}>

@@ -33,7 +33,7 @@ function filterValue(raw: string | undefined): string | undefined {
 export default async function TransactionsPage({
 	searchParams,
 }: TransactionsPageProps) {
-	await requireUser();
+	const user = await requireUser();
 	const params = await searchParams;
 	const month = resolveMonth(params.month);
 	const { from, to } = monthBounds(month);
@@ -48,10 +48,10 @@ export default async function TransactionsPage({
 	// listable after its account has been archived, so the lookup has to resolve
 	// those ids too.
 	const [transactions, accounts, saldos, categories] = await Promise.all([
-		listTransactions({ from, to, ...selected }),
-		listAccounts({ includeArchived: true }),
-		listSaldos({ includeArchived: true }),
-		listCategories({ includeArchived: true }),
+		listTransactions(user, { from, to, ...selected }),
+		listAccounts(user, { includeArchived: true }),
+		listSaldos(user, { includeArchived: true }),
+		listCategories(user, { includeArchived: true }),
 	]);
 
 	const header = (

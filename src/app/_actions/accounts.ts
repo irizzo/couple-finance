@@ -34,8 +34,8 @@ export async function createAccountForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await createAccount({
+	const user = await requireUser();
+	const result = await createAccount(user, {
 		name: textField(formData, "name"),
 		description: textField(formData, "description"),
 		initialAmount: parseAmount(formData.get("initialAmount")),
@@ -50,8 +50,8 @@ export async function updateAccountForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await updateAccount(textField(formData, "id"), {
+	const user = await requireUser();
+	const result = await updateAccount(user, textField(formData, "id"), {
 		name: textField(formData, "name"),
 		// The row always submits the input, so `""` here means "cleared".
 		description: textField(formData, "description"),
@@ -68,8 +68,8 @@ export async function archiveAccountForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await archiveAccount(textField(formData, "id"));
+	const user = await requireUser();
+	const result = await archiveAccount(user, textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
 	}
@@ -80,8 +80,8 @@ export async function unarchiveAccountForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await unarchiveAccount(textField(formData, "id"));
+	const user = await requireUser();
+	const result = await unarchiveAccount(user, textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
 	}

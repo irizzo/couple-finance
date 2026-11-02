@@ -30,10 +30,10 @@ interface SaldosPageProps {
 }
 
 export default async function SaldosPage({ searchParams }: SaldosPageProps) {
-	await requireUser();
+	const user = await requireUser();
 	const { archived } = await searchParams;
 	const includeArchived = archived === "1";
-	const result = await listSaldos({ includeArchived });
+	const result = await listSaldos(user, { includeArchived });
 
 	return (
 		<div className={styles.page}>

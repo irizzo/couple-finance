@@ -23,12 +23,22 @@ export interface Transaction {
 	 */
 	toAccountId?: string;
 	toSaldoId?: string;
+	ownerId: string;
+	/**
+	 * Always stored. Always `false` until Phase U6 puts the checkbox in the form;
+	 * written now so the U4 migration touches the real data only once.
+	 */
+	shared: boolean;
 }
 
 /**
  * `description` on Account, Saldo and Category says what the bucket is *for*.
  * Unrelated to `Transaction.description`, which is required and says what the
  * lançamento *was*.
+ *
+ * `ownerId`, on these and on Transaction and Budget, is the user the document
+ * belongs to. The data layer writes it from its `owner` argument on create and
+ * never changes it; no input type carries it.
  */
 export interface Account {
 	id: string;
@@ -38,6 +48,7 @@ export interface Account {
 	totalBalance: number;
 	realBalance: number;
 	archived: boolean;
+	ownerId: string;
 }
 
 export interface Saldo {
@@ -48,6 +59,7 @@ export interface Saldo {
 	totalBalance: number;
 	realBalance: number;
 	archived: boolean;
+	ownerId: string;
 }
 
 /**
@@ -59,6 +71,7 @@ export interface Category {
 	name: string;
 	description: string;
 	archived: boolean;
+	ownerId: string;
 }
 
 export type BudgetScope = "saldo" | "category";
@@ -77,9 +90,10 @@ export interface Budget {
 	scope: BudgetScope;
 	targetId: string; // a saldoId or a categoryId, per `scope`
 	plannedAmount: number;
+	ownerId: string;
 }
 
-export type SetBudgetInput = Omit<Budget, "id">;
+export type SetBudgetInput = Omit<Budget, "id" | "ownerId">;
 
 /**
  * One of the two people. The app is for exactly two: the second to sign up
@@ -112,7 +126,7 @@ export type DescriptionInput = { description?: string };
 
 export type CreateAccountInput = Omit<
 	Account,
-	"id" | "totalBalance" | "realBalance" | "archived" | "description"
+	"id" | "totalBalance" | "realBalance" | "archived" | "description" | "ownerId"
 > &
 	DescriptionInput;
 export type UpdateAccountInput = Partial<
@@ -121,7 +135,7 @@ export type UpdateAccountInput = Partial<
 
 export type CreateSaldoInput = Omit<
 	Saldo,
-	"id" | "totalBalance" | "realBalance" | "archived" | "description"
+	"id" | "totalBalance" | "realBalance" | "archived" | "description" | "ownerId"
 > &
 	DescriptionInput;
 export type UpdateSaldoInput = Partial<
@@ -130,14 +144,18 @@ export type UpdateSaldoInput = Partial<
 
 export type CreateCategoryInput = Omit<
 	Category,
-	"id" | "archived" | "description"
+	"id" | "archived" | "description" | "ownerId"
 > &
 	DescriptionInput;
 export type UpdateCategoryInput = Partial<
 	Pick<Category, "name" | "description">
 >;
 
-export type CreateTransactionInput = Omit<Transaction, "id">;
+/** `shared` joins the input in Phase U6, with the checkbox that sets it. */
+export type CreateTransactionInput = Omit<
+	Transaction,
+	"id" | "ownerId" | "shared"
+>;
 export type UpdateTransactionInput = Partial<CreateTransactionInput>;
 
 /** `password` is the plain text: `createUser` hashes it, and stores only the hash. */

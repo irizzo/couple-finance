@@ -32,7 +32,7 @@ export async function setBudgetForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
+	const user = await requireUser();
 	const raw = textField(formData, "plannedAmount").trim();
 	const budgetId = textField(formData, "budgetId");
 
@@ -42,14 +42,14 @@ export async function setBudgetForm(
 		if (budgetId === "") {
 			return { status: "ok" };
 		}
-		const removed = await deleteBudget(budgetId);
+		const removed = await deleteBudget(user, budgetId);
 		if (removed.ok) {
 			revalidatePath(PATH);
 		}
 		return fromResult(removed);
 	}
 
-	const result = await setBudget({
+	const result = await setBudget(user, {
 		month: textField(formData, "month"),
 		scope: textField(formData, "scope") as BudgetScope,
 		targetId: textField(formData, "targetId"),
@@ -70,9 +70,9 @@ export async function copyBudgetsForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
+	const user = await requireUser();
 	const month = textField(formData, "month");
-	const result = await copyBudgets(shiftMonth(month, -1), month);
+	const result = await copyBudgets(user, shiftMonth(month, -1), month);
 	if (!result.ok) {
 		return fromResult(result);
 	}

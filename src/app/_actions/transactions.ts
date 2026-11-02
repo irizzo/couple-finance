@@ -50,8 +50,8 @@ export async function createTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await createTransaction(readInput(formData));
+	const user = await requireUser();
+	const result = await createTransaction(user, readInput(formData));
 	if (!result.ok) {
 		return fromResult(result, formValues(formData));
 	}
@@ -65,8 +65,9 @@ export async function updateTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
+	const user = await requireUser();
 	const result = await updateTransaction(
+		user,
 		textField(formData, "id"),
 		readInput(formData),
 	);
@@ -86,8 +87,8 @@ export async function deleteTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireUser();
-	const result = await deleteTransaction(textField(formData, "id"));
+	const user = await requireUser();
+	const result = await deleteTransaction(user, textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
 	}

@@ -19,17 +19,17 @@ const MONTH_LENGTH = 7;
 export default async function EditTransactionPage({
 	params,
 }: EditTransactionPageProps) {
-	await requireUser();
+	const user = await requireUser();
 	const { id } = await params;
 
 	// Archived entities included: an existing transaction stays editable after
 	// its account has been archived, and an active-only list would silently drop
 	// the value the record currently holds.
 	const [existing, accounts, saldos, categories] = await Promise.all([
-		getTransaction(id),
-		listAccounts({ includeArchived: true }),
-		listSaldos({ includeArchived: true }),
-		listCategories({ includeArchived: true }),
+		getTransaction(user, id),
+		listAccounts(user, { includeArchived: true }),
+		listSaldos(user, { includeArchived: true }),
+		listCategories(user, { includeArchived: true }),
 	]);
 
 	// Takes an href because the month is only knowable once the record has been

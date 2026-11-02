@@ -29,6 +29,8 @@ function expense(
 		saldoId: "essenciais",
 		categoryId: "mercado",
 		type: TransactionType.EXPENSE,
+		ownerId: "ana",
+		shared: false,
 		...fields,
 	};
 }
@@ -61,6 +63,7 @@ function budget(
 		scope,
 		targetId,
 		plannedAmount,
+		ownerId: "ana",
 	};
 }
 

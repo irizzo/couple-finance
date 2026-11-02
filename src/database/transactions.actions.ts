@@ -8,7 +8,7 @@ import type {
 } from "firebase-admin/firestore";
 import { COLLECTIONS, withId } from "@/database/collections";
 import db from "@/database/db";
-import { notFound, ref } from "@/database/entities";
+import { notFound, owned, ref } from "@/database/entities";
 import { type ActionResult, fail, failFrom, ok } from "@/database/result";
 import {
 	collect,
@@ -23,6 +23,7 @@ import {
 	type Account,
 	type Category,
 	type CreateTransactionInput,
+	type Owner,
 	type Saldo,
 	type Transaction,
 	type TransactionFilters,
@@ -194,7 +195,15 @@ function validate(input: CreateTransactionInput): FieldErrors | null {
 	});
 }
 
-function normalize(input: CreateTransactionInput): Omit<Transaction, "id"> {
+/**
+ * The document to store, field by field, so nothing else in `input` is ever
+ * written. The owner comes from the argument, never from the input, and
+ * `shared` is always written, as `false` until Phase U6 lets a form set it.
+ */
+function normalize(
+	input: CreateTransactionInput,
+	owner: Owner,
+): Omit<Transaction, "id"> {
 	const data = {
 		date: input.date,
 		description: input.description.trim(),
@@ -204,6 +213,8 @@ function normalize(input: CreateTransactionInput): Omit<Transaction, "id"> {
 		saldoId: input.saldoId,
 		categoryId: input.categoryId,
 		type: input.type,
+		ownerId: owner.id,
+		shared: false,
 	};
 	// Only a transfer stores a destination. Turning one into an expense drops
 	// it, since every write here is a `tx.set` of the whole document.
@@ -225,8 +236,12 @@ async function readAll(
 
 /**
  * Verifies everything a transaction points at (see `targetsOf`). Saldo and
- * category are independent dimensions, so each is checked only for existence
- * and active status — any category may pair with any saldo.
+ * category are independent dimensions, so each is checked only for existence,
+ * ownership and active status — any category may pair with any saldo.
+ *
+ * Each target must belong to the transaction's owner, and one that does not is
+ * "not found", exactly like a missing one. This is what stops a forged form
+ * from posting to, or transferring into, the partner's account.
  *
  * `enforceActive` lists the document paths the caller is newly pointing at: an
  * archived target may never receive a *new* posting, but an existing
@@ -236,10 +251,11 @@ function checkTargets(
 	snaps: Snapshots,
 	targets: Target[],
 	enforceActive: Set<string>,
+	owner: Owner,
 ): string | null {
 	for (const target of targets) {
 		const snap = snaps.get(target.docRef.path);
-		if (!snap?.exists) {
+		if (!(snap && owned(snap, owner))) {
 			return `${target.label} "${target.id}" was not found`;
 		}
 		const entity = withId<Account | Saldo | Category>(snap);
@@ -289,6 +305,7 @@ function writeBalances(
 }
 
 export async function createTransaction(
+	owner: Owner,
 	input: CreateTransactionInput,
 ): Promise<ActionResult<Transaction>> {
 	const fieldErrors = validate(input);
@@ -298,7 +315,7 @@ export async function createTransaction(
 
 	try {
 		return await db.runTransaction(async (tx) => {
-			const data = normalize(input);
+			const data = normalize(input, owner);
 			const targets = targetsOf(data);
 			// Firestore requires every read before the first write.
 			const snaps = await readAll(tx, refsOf(targets));
@@ -306,6 +323,7 @@ export async function createTransaction(
 				snaps,
 				targets,
 				new Set(targets.map((target) => target.docRef.path)),
+				owner,
 			);
 			if (problem) {
 				return fail<Transaction>(problem);
@@ -326,6 +344,7 @@ export async function createTransaction(
 }
 
 export async function getTransaction(
+	owner: Owner,
 	id: string,
 ): Promise<ActionResult<Transaction>> {
 	if (nonEmptyString(id)) {
@@ -333,7 +352,7 @@ export async function getTransaction(
 	}
 	try {
 		const snap = await ref(COLLECTIONS.transactions).doc(id).get();
-		if (!snap.exists) {
+		if (!owned(snap, owner)) {
 			return notFound<Transaction>(LABEL, id);
 		}
 		return ok(withId<Transaction>(snap));
@@ -344,10 +363,12 @@ export async function getTransaction(
 
 /**
  * `date` is a zero-padded ISO string, so a lexicographic range is a correct
- * month filter and needs no composite index. The optional id filters are applied
- * in memory for the same reason.
+ * month filter and needs no composite index. The owner and the optional id
+ * filters are applied in memory for the same reason: an equality on `ownerId`
+ * beside the range on `date` would need a composite index.
  */
 export async function listTransactions(
+	owner: Owner,
 	filters: TransactionFilters,
 ): Promise<ActionResult<Transaction[]>> {
 	const fieldErrors = collect({
@@ -371,6 +392,7 @@ export async function listTransactions(
 		// A transfer belongs to both of its ends, so filtering by either account
 		// (or either saldo) finds it.
 		const matches = snap.docs
+			.filter((doc) => owned(doc, owner))
 			.map((doc) => withId<Transaction>(doc))
 			.filter(
 				(txn) =>
@@ -389,6 +411,7 @@ export async function listTransactions(
 }
 
 export async function updateTransaction(
+	owner: Owner,
 	id: string,
 	input: UpdateTransactionInput,
 ): Promise<ActionResult<Transaction>> {
@@ -401,7 +424,7 @@ export async function updateTransaction(
 		return await db.runTransaction(async (tx) => {
 			const docRef = ref(COLLECTIONS.transactions).doc(id);
 			const snap = await tx.get(docRef);
-			if (!snap.exists) {
+			if (!owned(snap, owner)) {
 				return notFound<Transaction>(LABEL, id);
 			}
 
@@ -411,7 +434,9 @@ export async function updateTransaction(
 			if (fieldErrors) {
 				return fail<Transaction>("Invalid transaction", fieldErrors);
 			}
-			const next = normalize(merged);
+			// The whole document is rewritten with `tx.set`, so `normalize` has to
+			// write `ownerId` and `shared` again, or an edit would erase them.
+			const next = normalize(merged, owner);
 
 			// Both the old and the new targets are needed: reassigning an account
 			// has to credit one document and debit the other.
@@ -429,7 +454,7 @@ export async function updateTransaction(
 					.map((target) => target.docRef.path)
 					.filter((path) => !kept.has(path)),
 			);
-			const problem = checkTargets(snaps, newTargets, reassigned);
+			const problem = checkTargets(snaps, newTargets, reassigned, owner);
 			if (problem) {
 				return fail<Transaction>(problem);
 			}
@@ -453,13 +478,14 @@ export async function updateTransaction(
  * they moved have to be unwound in the same atomic step.
  */
 export async function deleteTransaction(
+	owner: Owner,
 	id: string,
 ): Promise<ActionResult<Transaction>> {
 	try {
 		return await db.runTransaction(async (tx) => {
 			const docRef = ref(COLLECTIONS.transactions).doc(id);
 			const snap = await tx.get(docRef);
-			if (!snap.exists) {
+			if (!owned(snap, owner)) {
 				return notFound<Transaction>(LABEL, id);
 			}
 

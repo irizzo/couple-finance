@@ -1,4 +1,8 @@
-import type { CollectionReference } from "firebase-admin/firestore";
+import type {
+	CollectionReference,
+	DocumentData,
+	DocumentSnapshot,
+} from "firebase-admin/firestore";
 import { withId } from "@/database/collections";
 import db from "@/database/db";
 import { type ActionResult, fail, failFrom, ok } from "@/database/result";
@@ -10,11 +14,14 @@ import {
 	round2,
 	trimmedText,
 } from "@/database/validators";
-import type { ListOptions } from "@/types";
+import type { ListOptions, Owner } from "@/types";
 
 /**
  * Shared implementation behind the `*.actions.ts` files, which keep to one
  * entity each and re-export none of this.
+ *
+ * Every helper takes the `owner` first, as every action does: `src/database`
+ * knows nothing about sessions, so whose data a call reaches is an argument.
  */
 
 /**
@@ -31,6 +38,7 @@ export interface BalanceEntity {
 	totalBalance: number;
 	realBalance: number;
 	archived: boolean;
+	ownerId: string;
 }
 
 export interface NamedEntity {
@@ -38,6 +46,7 @@ export interface NamedEntity {
 	name: string;
 	description: string;
 	archived: boolean;
+	ownerId: string;
 }
 
 export function ref(collection: string): CollectionReference {
@@ -49,20 +58,42 @@ export function notFound<T>(label: string, id: string): ActionResult<T> {
 }
 
 /**
- * Guards a reference before anything points at it: the target has to exist and
- * still be active. Returns the problem as a message, or `null` when the
- * reference is good — the shape callers fold into their own `fail(...)`.
+ * True when the document exists and belongs to `owner`. Every read or write by
+ * id goes through it, and a document of someone else's then reads exactly like
+ * a missing one, with the same message, so probing an id reveals nothing.
+ *
+ * An owner without an id matches nothing, rather than every document that has
+ * no `ownerId` either.
+ */
+export function owned(
+	snap: DocumentSnapshot<DocumentData>,
+	owner: Owner,
+): boolean {
+	return (
+		snap.exists &&
+		typeof owner?.id === "string" &&
+		owner.id !== "" &&
+		snap.get("ownerId") === owner.id
+	);
+}
+
+/**
+ * Guards a reference before anything points at it: the target has to exist,
+ * belong to `owner` and still be active. Returns the problem as a message, or
+ * `null` when the reference is good — the shape callers fold into their own
+ * `fail(...)`.
  *
  * Parameterized by collection because budgets need exactly this check against
  * saldos *and* categories.
  */
 export async function assertActive(
+	owner: Owner,
 	collection: string,
 	id: string,
 	label: string,
 ): Promise<string | null> {
 	const snap = await ref(collection).doc(id).get();
-	if (!snap.exists) {
+	if (!owned(snap, owner)) {
 		return `${label} "${id}" was not found`;
 	}
 	// Only `archived` is read, so only `archived` is claimed — not every field
@@ -74,6 +105,7 @@ export async function assertActive(
 }
 
 export async function getEntity<T extends { id: string }>(
+	owner: Owner,
 	collection: string,
 	id: string,
 	label: string,
@@ -83,7 +115,7 @@ export async function getEntity<T extends { id: string }>(
 	}
 	try {
 		const snap = await ref(collection).doc(id).get();
-		if (!snap.exists) {
+		if (!owned(snap, owner)) {
 			return notFound<T>(label, id);
 		}
 		return ok(withId<T>(snap));
@@ -92,21 +124,24 @@ export async function getEntity<T extends { id: string }>(
 	}
 }
 
+/**
+ * The owner's entities, filtered on `ownerId` in Firestore, which the automatic
+ * single-field index serves. `archived` and the order are applied in memory:
+ * pairing either with the owner filter would need a composite index, and these
+ * collections are small enough that it buys nothing. Only `archived: false`
+ * counts as active, as the Firestore equality filter this replaced did.
+ */
 export async function listEntities<T extends NamedEntity>(
+	owner: Owner,
 	collection: string,
 	label: string,
 	options: ListOptions = {},
 ): Promise<ActionResult<T[]>> {
 	try {
-		const query = options.includeArchived
-			? ref(collection)
-			: ref(collection).where("archived", "==", false);
-		const snap = await query.get();
-		// Sorted in memory on purpose: pairing the `archived` equality filter with
-		// an `orderBy("name")` would require a composite Firestore index, and these
-		// collections are small enough that it buys nothing.
+		const snap = await ref(collection).where("ownerId", "==", owner.id).get();
 		const entities = snap.docs
 			.map((doc) => withId<T>(doc))
+			.filter((entity) => options.includeArchived || entity.archived === false)
 			.sort((a, b) => a.name.localeCompare(b.name));
 		return ok(entities);
 	} catch (cause) {
@@ -115,6 +150,7 @@ export async function listEntities<T extends NamedEntity>(
 }
 
 export async function setArchived<T extends NamedEntity>(
+	owner: Owner,
 	collection: string,
 	id: string,
 	archived: boolean,
@@ -123,7 +159,7 @@ export async function setArchived<T extends NamedEntity>(
 	try {
 		const docRef = ref(collection).doc(id);
 		const snap = await docRef.get();
-		if (!snap.exists) {
+		if (!owned(snap, owner)) {
 			return notFound<T>(label, id);
 		}
 		await docRef.update({ archived });
@@ -135,6 +171,7 @@ export async function setArchived<T extends NamedEntity>(
 }
 
 export async function createNamedEntity<T extends NamedEntity>(
+	owner: Owner,
 	collection: string,
 	input: { name: string; description?: string },
 	label: string,
@@ -149,14 +186,16 @@ export async function createNamedEntity<T extends NamedEntity>(
 
 	try {
 		const docRef = ref(collection).doc();
-		// `archived: false` is mandatory, not a default: a
-		// `where("archived", "==", false)` query silently skips documents that are
-		// missing the field entirely. `description` is written for the same
-		// reason — as `""` when omitted, never left out.
+		// `archived: false` is mandatory, not a default: `listEntities` counts only
+		// `archived === false` as active, so a document missing the field would
+		// drop out of every active list. `description` is written for the same
+		// reason — as `""` when omitted, never left out — and `ownerId` because a
+		// document without one belongs to no one and is never listed.
 		const data = {
 			name: input.name.trim(),
 			description: trimmedText(input.description),
 			archived: false,
+			ownerId: owner.id,
 		};
 		await docRef.set(data);
 		return ok({ id: docRef.id, ...data } as T);
@@ -166,6 +205,7 @@ export async function createNamedEntity<T extends NamedEntity>(
 }
 
 export async function updateNamedEntity<T extends NamedEntity>(
+	owner: Owner,
 	collection: string,
 	id: string,
 	input: { name?: string; description?: string },
@@ -187,7 +227,7 @@ export async function updateNamedEntity<T extends NamedEntity>(
 	try {
 		const docRef = ref(collection).doc(id);
 		const snap = await docRef.get();
-		if (!snap.exists) {
+		if (!owned(snap, owner)) {
 			return notFound<T>(label, id);
 		}
 
@@ -207,6 +247,7 @@ export async function updateNamedEntity<T extends NamedEntity>(
 }
 
 export async function createBalanceEntity<T extends BalanceEntity>(
+	owner: Owner,
 	collection: string,
 	input: { name: string; description?: string; initialAmount: number },
 	label: string,
@@ -233,6 +274,7 @@ export async function createBalanceEntity<T extends BalanceEntity>(
 			totalBalance: initialAmount,
 			realBalance: initialAmount,
 			archived: false,
+			ownerId: owner.id,
 		};
 		await docRef.set(data);
 		return ok({ id: docRef.id, ...data } as T);
@@ -242,6 +284,7 @@ export async function createBalanceEntity<T extends BalanceEntity>(
 }
 
 export async function updateBalanceEntity<T extends BalanceEntity>(
+	owner: Owner,
 	collection: string,
 	id: string,
 	input: { name?: string; description?: string; initialAmount?: number },
@@ -271,7 +314,7 @@ export async function updateBalanceEntity<T extends BalanceEntity>(
 		return await db.runTransaction(async (tx) => {
 			const docRef = ref(collection).doc(id);
 			const snap = await tx.get(docRef);
-			if (!snap.exists) {
+			if (!owned(snap, owner)) {
 				return notFound<T>(label, id);
 			}
 

@@ -32,10 +32,10 @@ interface AccountsPageProps {
 export default async function AccountsPage({
 	searchParams,
 }: AccountsPageProps) {
-	await requireUser();
+	const user = await requireUser();
 	const { archived } = await searchParams;
 	const includeArchived = archived === "1";
-	const result = await listAccounts({ includeArchived });
+	const result = await listAccounts(user, { includeArchived });
 
 	return (
 		<div className={styles.page}>

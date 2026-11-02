@@ -34,7 +34,7 @@ const BLANK: TransactionFormValues = {
 export default async function NewTransactionPage({
 	searchParams,
 }: NewTransactionPageProps) {
-	await requireUser();
+	const user = await requireUser();
 	const { month: requested, from } = await searchParams;
 	const month = resolveMonth(requested);
 	const backHref = `/transactions?month=${month}`;
@@ -48,10 +48,10 @@ export default async function NewTransactionPage({
 	// Active entities only: an archived target may not receive a *new* posting,
 	// so offering one would only produce a rejection.
 	const [accounts, saldos, categories, source] = await Promise.all([
-		listAccounts(),
-		listSaldos(),
-		listCategories(),
-		from ? getTransaction(from) : Promise.resolve(null),
+		listAccounts(user),
+		listSaldos(user),
+		listCategories(user),
+		from ? getTransaction(user, from) : Promise.resolve(null),
 	]);
 
 	const header = (
