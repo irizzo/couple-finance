@@ -4,6 +4,7 @@ import {
 	unarchiveAccountForm,
 	updateAccountForm,
 } from "@/app/_actions/accounts";
+import { requireUser } from "@/app/_actions/session";
 import { ArchivedToggle } from "@/components/ArchivedToggle";
 import { BalanceEntityManager } from "@/components/BalanceEntityManager";
 import { ErrorBanner } from "@/components/ErrorBanner";
@@ -31,6 +32,7 @@ interface AccountsPageProps {
 export default async function AccountsPage({
 	searchParams,
 }: AccountsPageProps) {
+	await requireUser();
 	const { archived } = await searchParams;
 	const includeArchived = archived === "1";
 	const result = await listAccounts({ includeArchived });

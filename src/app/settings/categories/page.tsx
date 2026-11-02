@@ -4,6 +4,7 @@ import {
 	unarchiveCategoryForm,
 	updateCategoryForm,
 } from "@/app/_actions/categories";
+import { requireUser } from "@/app/_actions/session";
 import { ArchivedToggle } from "@/components/ArchivedToggle";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import type { EntityLabels } from "@/components/entity-labels";
@@ -31,6 +32,7 @@ interface CategoriesPageProps {
 export default async function CategoriesPage({
 	searchParams,
 }: CategoriesPageProps) {
+	await requireUser();
 	const { archived } = await searchParams;
 	const includeArchived = archived === "1";
 	const result = await listCategories({ includeArchived });

@@ -47,6 +47,9 @@ function toVersionedUser(id: string, data: StoredUser): VersionedUser {
 	};
 }
 
+/** `createUser`'s refusal of a third user, exported so callers can tell it apart. */
+export const SIGN_UP_CLOSED_ERROR = "Sign-up is closed";
+
 /** What sign-in needs to check a password and issue a session. */
 export type Credentials = Pick<User, "id" | "passwordHash" | "sessionVersion">;
 
@@ -82,7 +85,7 @@ export async function createUser(
 			// sees the first.
 			const existing = await tx.get(ref(COLLECTION));
 			if (existing.size >= MAX_USERS) {
-				return fail<VersionedUser>("Sign-up is closed");
+				return fail<VersionedUser>(SIGN_UP_CLOSED_ERROR);
 			}
 			if (existing.docs.some((doc) => doc.data().username === key)) {
 				return fail<VersionedUser>("Invalid user", {

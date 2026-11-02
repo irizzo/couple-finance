@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireUser } from "@/app/_actions/session";
 import { updateTransactionForm } from "@/app/_actions/transactions";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { TransactionForm } from "@/components/TransactionForm";
@@ -18,6 +19,7 @@ const MONTH_LENGTH = 7;
 export default async function EditTransactionPage({
 	params,
 }: EditTransactionPageProps) {
+	await requireUser();
 	const { id } = await params;
 
 	// Archived entities included: an existing transaction stays editable after

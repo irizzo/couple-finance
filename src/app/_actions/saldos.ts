@@ -14,7 +14,7 @@ import {
 	fromResult,
 	textField,
 } from "./form-state";
-import { requireSession } from "./session";
+import { requireUser } from "./session";
 
 /**
  * Form adapters for saldos. Structurally identical to the accounts adapters,
@@ -28,7 +28,7 @@ export async function createSaldoForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const result = await createSaldo({
 		name: textField(formData, "name"),
 		description: textField(formData, "description"),
@@ -44,7 +44,7 @@ export async function updateSaldoForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const result = await updateSaldo(textField(formData, "id"), {
 		name: textField(formData, "name"),
 		// The row always submits the input, so `""` here means "cleared".
@@ -61,7 +61,7 @@ export async function archiveSaldoForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const result = await archiveSaldo(textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");
@@ -73,7 +73,7 @@ export async function unarchiveSaldoForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const result = await unarchiveSaldo(textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");

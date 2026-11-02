@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireUser } from "@/app/_actions/session";
 import { createTransactionForm } from "@/app/_actions/transactions";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import {
@@ -33,6 +34,7 @@ const BLANK: TransactionFormValues = {
 export default async function NewTransactionPage({
 	searchParams,
 }: NewTransactionPageProps) {
+	await requireUser();
 	const { month: requested, from } = await searchParams;
 	const month = resolveMonth(requested);
 	const backHref = `/transactions?month=${month}`;

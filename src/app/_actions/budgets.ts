@@ -15,7 +15,7 @@ import {
 	fromResult,
 	textField,
 } from "./form-state";
-import { requireSession } from "./session";
+import { requireUser } from "./session";
 
 /**
  * Form adapters for budgets.
@@ -32,7 +32,7 @@ export async function setBudgetForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const raw = textField(formData, "plannedAmount").trim();
 	const budgetId = textField(formData, "budgetId");
 
@@ -70,7 +70,7 @@ export async function copyBudgetsForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const month = textField(formData, "month");
 	const result = await copyBudgets(shiftMonth(month, -1), month);
 	if (!result.ok) {

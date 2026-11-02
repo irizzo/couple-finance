@@ -1,7 +1,7 @@
 # Couple Finance — spec and current state
 
-> Updated 2026-11-02, after Phase U1 of the new-features track (on top of
-> commit `10d130c`). This file is the project's spec **and**
+> Updated 2026-11-02, after Phase U2 of the new-features track (on top of
+> commit `49ac92f`, which is U1). This file is the project's spec **and**
 > the summary of where it stands: every convention below is in force, and every
 > decision worth knowing is recorded here with its reason. The plans and
 > implementation logs beside it in `docs/` are history (see "Docs map" at the
@@ -60,7 +60,7 @@ met here: `params` and `searchParams` are Promises, and `middleware.ts` is now
 ```bash
 npm run dev       # next dev, http://localhost:3000
 npm run build     # production build; must pass
-npm test          # vitest run: 130 specs in 5 files
+npm test          # vitest run: 152 specs in 5 files
 npm run lint      # biome check: 0 errors, 5 accepted warnings
 npm run format    # biome format --write
 npx tsc --noEmit  # must be clean
@@ -78,7 +78,7 @@ convenience.
 | **Plan, phases 1–7** | 1: categories decoupled from saldos. 2: app shell, design tokens, `src/lib`, form plumbing. 3: settings CRUD. 4: the monthly ledger. 5: create, edit, duplicate and delete transactions. 6: budgets by saldo and by category. 7: empty and error states, the 404 and the error boundary, dead code and the client `firebase` package removed, lint at zero errors. |
 | **Improvement track, phases A–E** | A–B: `description` on accounts, saldos and categories, in the data layer and then the UI. C: four defects fixed (below). D: Vitest over `src/lib`. E: Next 16.2.9 → 16.4.3 for published advisories, São Paulo time pinned in code, the shared-password gate, the data layer taken off the Server Action list, the Admin credential read from the environment. |
 | **Transfers** (commit `10d130c`) | A third transaction type that moves money between two account+saldo pairs. **Recorded in neither log**: this file is its only documentation. |
-| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done**: the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`, which nothing calls yet. U2 (sign-up and sign-in) is next. |
+| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done**: per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. The data is still global until U3 (ownership) and U4 (migration). |
 
 Every phase ended with `tsc`, lint and build clean, and from Phase 3 on, every
 phase that changed runtime behaviour was also checked by an end-to-end harness
@@ -94,7 +94,8 @@ on a deleted target vanished from the totals (G4).
 | Route | What it is |
 | --- | --- |
 | `/` | Redirects to `/transactions?month=<current>`. `force-dynamic`, because it reads the clock: a prerendered redirect would pin the month it was built in. |
-| `/login` | The only page outside the gate. A signed-in visit redirects to `/`. |
+| `/login` | Username and password. Outside the gate, with `/signup`. Shows "Criar conta" while sign-up is available. A signed-in visit redirects to `/`. |
+| `/signup` | Invite code, usuário, nome, senha, confirmar senha and the saldo mode. Shows a closed message instead of the form once two users exist or while `SIGNUP_CODE` is unset. A signed-in visit redirects to `/`. |
 | `/transactions?month=YYYY-MM` | The ledger: summary cards, conta/saldo/categoria filters, the month's lançamentos, and Editar · Duplicar · Excluir on each row. |
 | `/transactions/new` | Create. `?from=<id>` prefills a duplicate. `?month=` sets the way back and the default date. |
 | `/transactions/[id]/edit` | Edit. |
@@ -109,9 +110,8 @@ the layout reads the session cookie to decide whether to draw the nav.
 
 The Firestore data layer is built. Entities live in five root collections —
 `accounts`, `saldos`, `categories`, `transactions`, `budgets` — and are reached
-only through the `*.actions.ts` modules below. A sixth, `users`, has its module
-since Phase U1, but no page or adapter calls it until U2, and it holds no
-documents yet. Those are server code, not
+only through the `*.actions.ts` modules below. A sixth, `users` (since Phase
+U1), holds the two people; sign-up, sign-in and the session check read it. Those are server code, not
 Server Actions: the browser reaches them only through the form adapters in
 `src/app/_actions`, which check the session first.
 
@@ -256,13 +256,14 @@ routes, `FormData`, React or sessions.
 | Layer | Purpose |
 | --- | --- |
 | `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`), transaction aggregation (`rollup.ts`), session signing (`session.ts`), password hashing (`password.ts`). Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. **The exception is `password.ts`**: it is Node-only (`node:crypto` scrypt) and deliberately slow, so only the users data layer and the auth adapters import it, never the proxy or a client component. Each has a `*.spec.ts` beside it. |
-| `src/app/_actions/*.ts` | Form adapters — with `auth.ts`, **the app's only Server Actions**. The data-layer functions take typed objects, but `useActionState` needs `(prevState, formData)`. Each adapter calls `requireSession()` first, then parses `FormData`, calls the data layer, calls `revalidatePath`, and returns a `FormState`. `form-state.ts` (the shared shape) and `session.ts` (the session check) are deliberately *not* `"use server"`. `auth.ts` signs in and out. |
-| `src/proxy.ts` | The gate in front of every route except `/login`. See AUTH below. |
+| `src/app/_actions/*.ts` | Form adapters — with `auth.ts`, **the app's only Server Actions**. The data-layer functions take typed objects, but `useActionState` needs `(prevState, formData)`. Each adapter calls `requireUser()` first, then parses `FormData`, calls the data layer, calls `revalidatePath`, and returns a `FormState`. `form-state.ts` (the shared shape) and `session.ts` (`getSessionUser`, `requireUser`, `startSession`, `signUpAvailable`) are deliberately *not* `"use server"`. `auth.ts` signs up, in and out. |
+| `src/proxy.ts` | The optimistic gate in front of every route except `/login` and `/signup`. See AUTH below. |
 | `src/components/*.tsx` | Shared presentation — form primitives, tables, navigation. |
 
 The 17 adapters: `create`/`update`/`archive`/`unarchive` × accounts, saldos and
 categories (12); `create`/`update`/`delete` for transactions (3);
-`setBudgetForm` and `copyBudgetsForm` (2). Plus `signInForm` and `signOutForm`.
+`setBudgetForm` and `copyBudgetsForm` (2). Plus `signInForm`, `signOutForm` and
+`signUpForm`.
 
 ### UI conventions
 
@@ -422,57 +423,78 @@ Behaviour specific to one screen, decided along the way.
 
 ## AUTH
 
-One shared password for both people (`AUTH_PASSWORD`), no per-person identity.
-The client `firebase` package is ruled out above, so Firebase Auth is too; if
-per-person attribution is ever wanted, this has to become real per-user auth.
-**That is now under way** (`NEW_FEATURES.MD`). Phase U1 added users and
-password hashing to the data layer only. Everything below still describes the
-running app, and is rewritten from Phase U2 on.
+Per-user sign-in since Phase U2: each of the two people has a username and
+their own password. The client `firebase` package is ruled out above, so
+Firebase Auth is too; users live in Firestore (see "Users" under DATA LAYER).
+**The data is still global until U3/U4**: whoever signs in sees everything.
 
-* **Password hashes** (since U1, not yet used by sign-in) are
-  `scrypt$N$r$p$<salt hex>$<hash hex>`: N = 2^15, r = 8, p = 3, a 16-byte salt
-  and a 32-byte hash, about 280 ms each. The parameters travel in the string,
-  so raising them affects new hashes only. `maxmem` is set to 256 MiB, because
-  Node's 32 MiB default refuses these parameters. Passwords are NFC-normalized
-  before hashing. `verifyPassword` compares with `timingSafeEqual`, and returns
-  `false` for any malformed stored value, including a salt or hash under 16
-  bytes.
-
-* **A session is a signed expiry.** `src/lib/session.ts` signs
-  `<expiry ms>.<hex HMAC-SHA256>` with `AUTH_SECRET` (32+ characters) over Web
-  Crypto. 30 days, in a cookie named `session`: `httpOnly`, `sameSite: "lax"`,
-  `path: "/"`, `secure` in production. Stateless: "Sair" clears the cookie but
-  cannot revoke a copy of it; rotating `AUTH_SECRET` signs everyone out.
-* **It fails closed and loudly.** A missing or short `AUTH_SECRET`, or a missing
-  `AUTH_PASSWORD`, throws — on the first request, not the first sign-in. Never
-  default either one.
-* **Two layers, both required.** `src/proxy.ts` turns away any request without a
-  valid session — a page with a 307 to `/login`, a Server Action fetch with a
-  401 carrying `x-action-redirect: /login` (Next's own action-redirect header,
-  so the client navigates instead of landing on `error.tsx`), any other POST
-  with a 303. Its `matcher` exempts only `/login`, `/_next/` and the favicon,
-  anchored so `/loginx` stays behind the gate. But a path the matcher skips
-  also skips the actions posted to it, and Next forwards an action id posted to
-  *any* page to the page that owns it — so **every adapter's first line is
-  `await requireSession()`**. A new adapter without it is an open endpoint;
-  nothing else fails.
+* **A session names its user.** `src/lib/session.ts` signs
+  `<userId>.<sessionVersion>.<expiry ms>.<hex HMAC-SHA256>` with `AUTH_SECRET`
+  (32+ characters) over Web Crypto. 30 days, in a cookie named `session`:
+  `httpOnly`, `sameSite: "lax"`, `path: "/"`, `secure` in production, set only
+  by `startSession` in `src/app/_actions/session.ts`. `readSession` requires
+  exactly three parts (alphanumeric id, digits, an unexpired digit expiry), so
+  a pre-U2 `<expiry>.<mac>` token reads as signed out. `issueSession` throws
+  rather than sign anything `readSession` would refuse.
+* **Revocation is the session version.** A token is good only while the user
+  document still exists with the same `sessionVersion`; bumping it (U5's
+  password change) signs out every copy of every session. "Sair" clears this
+  browser's cookie; rotating `AUTH_SECRET` signs everyone out.
+* **Two layers, both required.** `src/proxy.ts` is the *optimistic* check
+  (Next's authentication guide): signature and expiry only, no Firestore,
+  since it runs on every request including prefetches. It turns away a request
+  without a valid token — a page with a 307 to `/login`, a Server Action fetch
+  with a 401 carrying `x-action-redirect: /login` (Next's own action-redirect
+  header, so the client navigates instead of landing on `error.tsx`), any other
+  POST with a 303. Its `matcher` exempts only `/login`, `/signup`, `/_next/`
+  and the favicon, anchored so `/loginx` and `/signup/x` stay behind the gate.
+  The *secure* check is `requireUser()`: `getSessionUser` (React `cache`, one
+  read per render) loads the user and compares the version, and anything wrong
+  redirects to `/login`. A path the matcher skips also skips the actions posted
+  to it, Next forwards an action id posted to *any* page to the page that owns
+  it, and a deleted user's or an old password's token passes the proxy — so
+  **`await requireUser()` is the first line of every adapter and of every page
+  that reads data**. A new adapter or page without it is open; nothing else
+  fails.
+* **It fails closed and loudly.** A missing or short `AUTH_SECRET` throws on
+  the first request, not the first sign-in. A failed user read reads as signed
+  out, never as signed in. Never default `AUTH_SECRET`.
 * **Only the adapters and `auth.ts` are Server Actions.** Any module marked
-  `"use server"` exposes every export as an endpoint, and the manifest should
-  list the 17 adapters plus sign-in and sign-out, nothing else. Code that must
-  not be one — the data layer, the session check — is `import "server-only"`
-  instead.
-* **Passwords are compared as HMACs** (`passwordMatches`), so the timing reveals
-  neither length nor prefix. Nothing rate-limits sign-in: the passphrase's
-  length is the whole defence. A wrong password returns "Senha incorreta." and
-  echoes nothing back.
-* **Sign-in always lands on `/`.** There is no `next` parameter, so there is no
-  open-redirect surface to validate. The password field has no `autoFocus`,
-  per Biome's a11y rule.
-* **Configuration enters in four files** — the proxy, `auth.ts`, `session.ts`
-  and `firebase.config.js` — the only ones where Biome allows `process.env`.
-  `.env.local` (gitignored by `.env*`) holds `AUTH_PASSWORD` and `AUTH_SECRET`
-  locally; a deploy also sets `FIREBASE_SERVICE_ACCOUNT` to the key JSON (in a
-  dotenv file, single-quoted so its `\n` escapes survive).
+  `"use server"` exposes every export as an endpoint, and the manifest lists
+  exactly 20: the 17 adapters plus `signInForm`, `signOutForm` and
+  `signUpForm`. Code that must not be one — the data layer, the session check,
+  `startSession` — is `import "server-only"` instead.
+* **Sign-in never says which part was wrong.** `signInForm` normalizes the
+  username, calls `findCredentials`, and verifies an unknown username against a
+  dummy hash made once per process (`hashPassword(randomUUID())`, so it always
+  has the current cost), so both failures take one scrypt run. Both return the
+  form-level "Usuário ou senha incorretos." and echo only the username. Nothing
+  rate-limits sign-in: the 12-character minimum is the defence.
+* **Sign-up needs the invite code** (`SIGNUP_CODE`), compared as HMACs
+  (`secretMatches`) so the timing reveals neither length nor prefix. With the
+  variable unset, `/signup` is closed. The code is checked *first*, so someone
+  without it learns nothing (not even whether a username is taken); then
+  "confirmar senha" and the saldo mode; then `createUser`, whose refusal of a
+  third user (`SIGN_UP_CLOSED_ERROR`) becomes "O cadastro está fechado.". The
+  code and the passwords are never echoed. `/login` shows "Criar conta" only
+  while `signUpAvailable()` (code set and fewer than two users).
+* **Password hashes** are `scrypt$N$r$p$<salt hex>$<hash hex>`: N = 2^15,
+  r = 8, p = 3, a 16-byte salt and a 32-byte hash, about 280 ms each. The
+  parameters travel in the string, so raising them affects new hashes only.
+  `maxmem` is set to 256 MiB, because Node's 32 MiB default refuses these
+  parameters. Passwords are NFC-normalized before hashing. `verifyPassword`
+  compares with `timingSafeEqual`, and returns `false` for any malformed stored
+  value, including a salt or hash under 16 bytes.
+* **Sign-in and sign-up always land on `/`.** There is no `next` parameter, so
+  there is no open-redirect surface to validate. No field has `autoFocus`, per
+  Biome's a11y rule. A signed-in visit to either page redirects to `/`.
+* **Configuration enters in four files** — the proxy, `auth.ts`,
+  `_actions/session.ts` and `firebase.config.js` — the only ones where Biome
+  allows `process.env`. Pages ask `signUpAvailable()` rather than read
+  `SIGNUP_CODE`. `.env.local` (gitignored by `.env*`) holds `AUTH_SECRET` and
+  `SIGNUP_CODE` locally; a deploy also sets `FIREBASE_SERVICE_ACCOUNT` to the
+  key JSON (in a dotenv file, single-quoted so its `\n` escapes survive).
+  `AUTH_PASSWORD` is gone.
 
 ## TOOLING AND TESTING
 
@@ -497,7 +519,7 @@ only inline `biome-ignore` is on `TZ` in the Vitest config, an environment
 variable's name.
 
 `npm test` runs Vitest over `src/**/*.spec.ts`, which today means `src/lib`:
-130 specs (`month` 27, `money` 17, `password` 24, `rollup` 29, `session` 33).
+152 specs (`month` 27, `money` 17, `password` 24, `rollup` 29, `session` 55).
 Specs sit beside the module they cover and need no mocks, since nothing in
 `src/lib` reaches Firestore. `password.spec.ts` takes about 3 s, because scrypt
 is slow on purpose; it shares one hash across specs where it can. `vitest.config.mts` takes the `@/*` alias from tsconfig
@@ -562,8 +584,8 @@ Raise them with the owner rather than building them unasked.
 * **Undo for a deleted transaction.** Hard delete is the design.
 * **A separate budget-create screen or a per-row delete button.** The table is
   the editor, and emptying the field clears the plan.
-* **Firebase Auth, per-person accounts, a sign-in rate limit, a post-login
-  `next` redirect.** See AUTH.
+* **Firebase Auth, a sign-in rate limit, a post-login `next` redirect.** See
+  AUTH.
 * **Composite indexes.** Not needed at this scale.
 * **Translated server messages.** Data-layer errors ("must be a non-empty
   text", "cannot be negative") are still English in a Portuguese UI. That is
@@ -576,12 +598,14 @@ Raise them with the owner rather than building them unasked.
 
 **All four goals and both planned tracks are complete, and transfers have been
 added since.** A third track, new features (two users, shared expenses, a
-shared dashboard), is under way: U1 of 8 is done and adds no behaviour yet.
-**From U2 on, do not deploy, and do not let the partner sign up, until U4 has
-migrated the real data.** Every page reports a failed `ActionResult` in a banner and has a
-first-run empty state pointing at what must be created first. The app is
-behind a shared password: `/login` is the only open page, every Server Action
-checks the session, and "Sair" in the nav signs out.
+shared dashboard), is under way: U1 and U2 of 8 are done. **Do not deploy,
+and do not let the partner sign up, until U4 has migrated the real data**: the
+data is still global, so a second account would see and edit everything. Only
+the owner signs up now. Every page reports a failed `ActionResult` in a banner
+and has a first-run empty state pointing at what must be created first. Each
+person signs in with their own username and password: `/login` and `/signup`
+are the only open pages, every Server Action and data page checks the user
+against Firestore, and "Sair" in the nav signs out.
 
 Everything is verified end to end against real Firestore, including the
 split-bill arithmetic and an overrun against a category target, **except
@@ -590,17 +614,23 @@ and covered by specs in `src/lib`.
 
 ### Still open
 
-Nothing blocks a deploy. It needs `AUTH_PASSWORD`, `AUTH_SECRET` and
-`FIREBASE_SERVICE_ACCOUNT` set, and HTTPS, since the cookie is `Secure` in
-production. What remains is known and accepted:
+**A deploy waits for U4** (see above). It will need `AUTH_SECRET` and
+`FIREBASE_SERVICE_ACCOUNT` set, `SIGNUP_CODE` only while someone still has to
+sign up, and HTTPS, since the cookie is `Secure` in production. What remains is
+known and accepted:
 
 * **Transfers need one end-to-end pass against real Firestore.** Create one
   between two accounts under one saldo, and check that the saldo's balances do
   not move. Edit it into an expense, then delete it, and confirm all four
   balances return to where they started.
 * **Sign-in has no rate limit**, and a copied session cookie outlives "Sair"
-  until it expires (see AUTH). `AUTH_PASSWORD` in `.env.local` started as a
-  random placeholder; use a long passphrase there and in any deploy.
+  until it expires or the user's `sessionVersion` changes (see AUTH).
+* **A stale cookie is not cleared.** Pages cannot set cookies, so a token whose
+  user is gone or whose version is old stays until the next sign-in or "Sair";
+  each request with it simply lands on `/login`.
+* **The client-side `useActionState` path of `/login` and `/signup` was not
+  browser-tested in U2.** The harness posts forms without JavaScript, which runs
+  the same actions and renders the same `FormState`.
 * **The proxy's answer to a Server Action fetch relies on `x-action-redirect`**,
   which Next uses internally rather than documents. Re-check it on Next
   upgrades: with the cookie deleted, submitting a form should land on `/login`,

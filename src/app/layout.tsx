@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { signOutForm } from "@/app/_actions/auth";
-import { hasSession } from "@/app/_actions/session";
+import { getSessionUser } from "@/app/_actions/session";
 import { NavLink } from "@/components/NavLink";
 import "./globals.css";
 import styles from "./layout.module.css";
@@ -27,9 +27,11 @@ export default async function RootLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
-	// Only /login is outside the proxy, so in practice this hides the nav there
-	// and nowhere else.
-	const signedIn = await hasSession();
+	// Only /login and /signup are outside the proxy, so in practice this hides
+	// the nav there, and on the way to /login for a token the proxy accepted but
+	// whose user is gone or whose password has since changed. `cache` shares this
+	// read with the page's own `requireUser`.
+	const user = await getSessionUser();
 
 	return (
 		<html
@@ -41,16 +43,19 @@ export default async function RootLayout({
 					<header className={styles.header}>
 						<div className={styles.headerInner}>
 							<span className={styles.brand}>Couple Finance</span>
-							{signedIn && (
+							{user && (
 								<nav aria-label="Seções" className={styles.nav}>
 									<NavLink href="/transactions">Transações</NavLink>
 									<NavLink href="/budget">Orçamento</NavLink>
 									<NavLink href="/settings">Configurações</NavLink>
-									<form action={signOutForm} className={styles.signOut}>
-										<button className={styles.signOutButton} type="submit">
-											Sair
-										</button>
-									</form>
+									<div className={styles.account}>
+										<span className={styles.userName}>{user.name}</span>
+										<form action={signOutForm}>
+											<button className={styles.signOutButton} type="submit">
+												Sair
+											</button>
+										</form>
+									</div>
 								</nav>
 							)}
 						</div>

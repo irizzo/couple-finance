@@ -36,10 +36,23 @@
 	gap: var(--space-5);
 }
 
-/* The last nav item, pushed to the far end; a button, because signing out
-   is a POST, but dressed as one more link. */
-.signOut {
+/* Who is signed in, and "Sair", pushed to the far end. Sair is a button,
+   because signing out is a POST, but dressed as one more link. */
+.account {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
 	margin-left: auto;
+}
+
+/* A display name has no length cap, so a long one is cut, not wrapped. */
+.userName {
+	max-width: 16ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.9375rem;
+	font-weight: 600;
 }
 
 .signOutButton {

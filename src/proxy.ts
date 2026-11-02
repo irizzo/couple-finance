@@ -9,9 +9,12 @@ const SEE_OTHER = 303;
  * includes a Server Action: one is a POST to the page that uses it, so it
  * passes through here like the page does.
  *
- * Not the only check. A path the `matcher` skips also skips the actions posted
- * to it, so every adapter repeats this with `requireSession` — see
- * `src/app/_actions/session.ts`.
+ * Optimistic, as Next's authentication guide puts it: it checks the cookie's
+ * signature and expiry, and reads nothing from Firestore, because it runs on
+ * every request, prefetches included. Not the only check, then. A path the
+ * `matcher` skips also skips the actions posted to it, and a valid token may
+ * belong to a deleted user or an old password, so every adapter and every page
+ * that reads data starts with `requireUser` — see `src/app/_actions/session.ts`.
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
 	const token = request.cookies.get(SESSION_COOKIE)?.value;
@@ -41,8 +44,9 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-	// Everything except the login page itself, the build's own assets (scripts,
-	// styles, fonts, dev HMR) and the favicon the login page shows. Anchored, so
-	// `/loginx` or `/favicon.ico/x` stays behind the gate.
-	matcher: ["/((?!login$|_next/|favicon\\.ico$).*)"],
+	// Everything except the sign-in and sign-up pages, the build's own assets
+	// (scripts, styles, fonts, dev HMR) and the favicon those pages show.
+	// Anchored, so `/loginx`, `/signup/x` or `/favicon.ico/x` stays behind the
+	// gate.
+	matcher: ["/((?!login$|signup$|_next/|favicon\\.ico$).*)"],
 };

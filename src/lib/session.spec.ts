@@ -3,14 +3,18 @@ import {
 	issueSession,
 	isValidSession,
 	MIN_SECRET_LENGTH,
-	passwordMatches,
+	readSession,
 	SESSION_MAX_AGE_SECONDS,
+	secretMatches,
 	sign,
 	verify,
 } from "./session";
 
 const SECRET = "a".repeat(MIN_SECRET_LENGTH);
 const OTHER_SECRET = "b".repeat(MIN_SECRET_LENGTH);
+/** Shaped like Firestore's generated ids: twenty alphanumerics. */
+const USER_ID = "Ab3dEf6hIj9lMn2pQr5t";
+const OTHER_USER_ID = "Zy8xWv7uTs6rQp5oNm4l";
 const SIGNED_IN_AT = new Date("2026-10-31T12:00:00Z");
 const MAX_AGE_MS = SESSION_MAX_AGE_SECONDS * 1000;
 
@@ -76,39 +80,86 @@ describe("sessions", () => {
 		vi.useRealTimers();
 	});
 
-	it("accepts a fresh session", async () => {
-		expect(await isValidSession(await issueSession(SECRET), SECRET)).toBe(true);
+	const expiresAt = () => SIGNED_IN_AT.getTime() + MAX_AGE_MS;
+
+	it("round-trips the user id, the version and the expiry", async () => {
+		const token = await issueSession(USER_ID, 3, SECRET);
+		expect(token).toMatch(
+			new RegExp(`^${USER_ID}\\.3\\.${expiresAt()}\\.[0-9a-f]{64}$`),
+		);
+		expect(await readSession(token, SECRET)).toEqual({
+			userId: USER_ID,
+			sessionVersion: 3,
+			expiresAt: expiresAt(),
+		});
+		expect(await isValidSession(token, SECRET)).toBe(true);
 	});
 
 	it("accepts it up to the last millisecond, and not at expiry", async () => {
-		const token = await issueSession(SECRET);
-		vi.setSystemTime(SIGNED_IN_AT.getTime() + MAX_AGE_MS - 1);
+		const token = await issueSession(USER_ID, 1, SECRET);
+		vi.setSystemTime(expiresAt() - 1);
+		expect(await readSession(token, SECRET)).not.toBeNull();
 		expect(await isValidSession(token, SECRET)).toBe(true);
-		vi.setSystemTime(SIGNED_IN_AT.getTime() + MAX_AGE_MS);
+		vi.setSystemTime(expiresAt());
+		expect(await readSession(token, SECRET)).toBeNull();
 		expect(await isValidSession(token, SECRET)).toBe(false);
 	});
 
 	it("refuses a session once the secret rotates", async () => {
-		const token = await issueSession(SECRET);
-		expect(await isValidSession(token, OTHER_SECRET)).toBe(false);
+		const token = await issueSession(USER_ID, 1, SECRET);
+		expect(await readSession(token, OTHER_SECRET)).toBeNull();
 	});
 
-	it("refuses a tampered session", async () => {
-		const token = tamperMac(await issueSession(SECRET));
-		expect(await isValidSession(token, SECRET)).toBe(false);
+	it("refuses a tampered MAC", async () => {
+		const token = tamperMac(await issueSession(USER_ID, 1, SECRET));
+		expect(await readSession(token, SECRET)).toBeNull();
+	});
+
+	it("refuses another user's id under the original MAC", async () => {
+		const token = await issueSession(USER_ID, 1, SECRET);
+		const forged = token.replace(USER_ID, OTHER_USER_ID);
+		expect(forged).not.toBe(token);
+		expect(await readSession(forged, SECRET)).toBeNull();
+	});
+
+	it("refuses a raised version under the original MAC", async () => {
+		const token = await issueSession(USER_ID, 1, SECRET);
+		expect(await readSession(token.replace(".1.", ".2."), SECRET)).toBeNull();
+	});
+
+	it("refuses a token issued before per-user sign-in", async () => {
+		// `<expiry>.<mac>`: correctly signed, unexpired, and one part short of two.
+		const legacy = await sign(String(expiresAt()), SECRET);
+		expect(await readSession(legacy, SECRET)).toBeNull();
+		expect(await isValidSession(legacy, SECRET)).toBe(false);
 	});
 
 	// "9e99" is a number, and a far-future one: only the digits-only rule stops it.
-	it.each(["forever", "9e99", "-1", ""])(
-		"refuses the correctly signed non-expiry %j",
-		async (value) => {
-			expect(await isValidSession(await sign(value, SECRET), SECRET)).toBe(
-				false,
-			);
-		},
-	);
+	it.each([
+		["forever"],
+		["9e99"],
+		["-1"],
+		[""],
+		["u1.1"],
+		["u1.1.FUTURE.extra"],
+		[".1.FUTURE"],
+		["u1..FUTURE"],
+		["u1.1."],
+		["u-1.1.FUTURE"],
+		["u_1.1.FUTURE"],
+		["u1.-1.FUTURE"],
+		["u1.x.FUTURE"],
+		["u1.1.9e99"],
+		["u1.1.PAST"],
+	])("refuses the correctly signed value %j", async (template) => {
+		const value = template
+			.replace("FUTURE", String(expiresAt()))
+			.replace("PAST", String(SIGNED_IN_AT.getTime() - 1));
+		expect(await readSession(await sign(value, SECRET), SECRET)).toBeNull();
+	});
 
 	it.each([undefined, ""])("refuses the missing cookie %j", async (token) => {
+		expect(await readSession(token, SECRET)).toBeNull();
 		expect(await isValidSession(token, SECRET)).toBe(false);
 	});
 
@@ -118,29 +169,50 @@ describe("sessions", () => {
 			"AUTH_SECRET",
 		);
 	});
+
+	it.each(["", "a.b", "a-b", "a/b"])(
+		"will not issue a token for the user id %j",
+		(userId) => {
+			expect(() => issueSession(userId, 1, SECRET)).toThrow("alphanumeric");
+		},
+	);
+
+	it.each([-1, 1.5, Number.NaN])(
+		"will not issue a token for the version %j",
+		(version) => {
+			expect(() => issueSession(USER_ID, version, SECRET)).toThrow(
+				"non-negative integer",
+			);
+		},
+	);
+
+	it("issues version 0", async () => {
+		const token = await issueSession(USER_ID, 0, SECRET);
+		expect((await readSession(token, SECRET))?.sessionVersion).toBe(0);
+	});
 });
 
-describe("passwordMatches", () => {
-	it("accepts the password", async () => {
-		expect(
-			await passwordMatches("correct horse", "correct horse", SECRET),
-		).toBe(true);
+describe("secretMatches", () => {
+	it("accepts the secret", async () => {
+		expect(await secretMatches("correct horse", "correct horse", SECRET)).toBe(
+			true,
+		);
 	});
 
 	it.each(["", "correct", "correct horse ", "Correct horse", "x"])(
 		"refuses %j",
 		async (candidate) => {
-			expect(await passwordMatches(candidate, "correct horse", SECRET)).toBe(
+			expect(await secretMatches(candidate, "correct horse", SECRET)).toBe(
 				false,
 			);
 		},
 	);
 
 	it.each([undefined, ""])(
-		"throws when the configured password is %j, so it never matches empty",
+		"throws when the expected value is %j, so it never matches empty",
 		async (expected) => {
-			await expect(passwordMatches("", expected, SECRET)).rejects.toThrow(
-				"AUTH_PASSWORD",
+			await expect(secretMatches("", expected, SECRET)).rejects.toThrow(
+				"non-empty expected value",
 			);
 		},
 	);

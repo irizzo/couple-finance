@@ -4,6 +4,7 @@ import {
 	unarchiveSaldoForm,
 	updateSaldoForm,
 } from "@/app/_actions/saldos";
+import { requireUser } from "@/app/_actions/session";
 import { ArchivedToggle } from "@/components/ArchivedToggle";
 import { BalanceEntityManager } from "@/components/BalanceEntityManager";
 import { ErrorBanner } from "@/components/ErrorBanner";
@@ -29,6 +30,7 @@ interface SaldosPageProps {
 }
 
 export default async function SaldosPage({ searchParams }: SaldosPageProps) {
+	await requireUser();
 	const { archived } = await searchParams;
 	const includeArchived = archived === "1";
 	const result = await listSaldos({ includeArchived });

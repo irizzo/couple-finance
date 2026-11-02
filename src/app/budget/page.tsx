@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { copyBudgetsForm, setBudgetForm } from "@/app/_actions/budgets";
+import { requireUser } from "@/app/_actions/session";
 import { BudgetTable } from "@/components/BudgetTable";
 import { CopyBudgetsButton } from "@/components/CopyBudgetsButton";
 import { ErrorBanner } from "@/components/ErrorBanner";
@@ -22,6 +23,7 @@ interface BudgetPageProps {
 }
 
 export default async function BudgetPage({ searchParams }: BudgetPageProps) {
+	await requireUser();
 	const { month: requested } = await searchParams;
 	const month = resolveMonth(requested);
 	const { from, to } = monthBounds(month);

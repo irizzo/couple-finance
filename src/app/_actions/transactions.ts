@@ -15,7 +15,7 @@ import {
 	fromResult,
 	textField,
 } from "./form-state";
-import { requireSession } from "./session";
+import { requireUser } from "./session";
 
 /**
  * Form adapters for transactions.
@@ -50,7 +50,7 @@ export async function createTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const result = await createTransaction(readInput(formData));
 	if (!result.ok) {
 		return fromResult(result, formValues(formData));
@@ -65,7 +65,7 @@ export async function updateTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const result = await updateTransaction(
 		textField(formData, "id"),
 		readInput(formData),
@@ -86,7 +86,7 @@ export async function deleteTransactionForm(
 	_previous: FormState,
 	formData: FormData,
 ): Promise<FormState> {
-	await requireSession();
+	await requireUser();
 	const result = await deleteTransaction(textField(formData, "id"));
 	if (result.ok) {
 		revalidatePath("/", "layout");

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireUser } from "@/app/_actions/session";
 import { deleteTransactionForm } from "@/app/_actions/transactions";
 import controls from "@/components/controls.module.css";
 import { ErrorBanner } from "@/components/ErrorBanner";
@@ -32,6 +33,7 @@ function filterValue(raw: string | undefined): string | undefined {
 export default async function TransactionsPage({
 	searchParams,
 }: TransactionsPageProps) {
+	await requireUser();
 	const params = await searchParams;
 	const month = resolveMonth(params.month);
 	const { from, to } = monthBounds(month);

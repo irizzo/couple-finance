@@ -30,7 +30,9 @@ account, split 50/50, is stored as R$ 90 total and R$ 45 real.
   amounts with a progress bar. One button copies last month's plan.
 - **Archive instead of delete.** Accounts, saldos and categories can be
   archived and restored. Past transactions keep pointing at them.
-- **Shared password.** The whole app sits behind one password for both people.
+- **A login for each person.** Each of the two people signs up with a
+  username and their own password. Sign-up needs an invite code and closes
+  once two accounts exist.
 
 ## How balances work
 
@@ -74,12 +76,13 @@ You need Node.js 24 and a Firebase project with a Firestore database.
 3. Create `.env.local` in the project root. It is gitignored.
 
    ```bash
-   AUTH_PASSWORD=a-long-passphrase-you-will-share
    AUTH_SECRET=<at least 32 characters; generate one with: openssl rand -hex 32>
+   SIGNUP_CODE=<an invite code; generate one with: openssl rand -hex 16>
    ```
 
-   If either value is missing, or `AUTH_SECRET` is shorter than 32
-   characters, every request fails with an error. There is no default.
+   If `AUTH_SECRET` is missing or shorter than 32 characters, every request
+   fails with an error. There is no default. While `SIGNUP_CODE` is unset,
+   sign-up is closed.
 
 4. Start the development server:
 
@@ -87,7 +90,8 @@ You need Node.js 24 and a Firebase project with a Firestore database.
    npm run dev
    ```
 
-   Open <http://localhost:3000> and sign in with `AUTH_PASSWORD`.
+   Open <http://localhost:3000/signup>, enter the invite code and create your
+   account. Passwords need at least 12 characters.
 
 5. Before entering transactions, go to **Configurações** and create at least
    one account, one saldo and one category.
@@ -111,7 +115,7 @@ Firebase project.
 
 ```text
 src/
-  app/            Routes: /transactions, /budget, /settings, /login
+  app/            Routes: /transactions, /budget, /settings, /login, /signup
     _actions/     Server Actions. Each checks the session, then calls the data layer
   components/     Shared UI: forms, tables, navigation
   database/       Firestore access (server-only), validation, Admin SDK setup
@@ -122,10 +126,11 @@ src/
 
 ## Deploying
 
-Set three environment variables on the host:
+Set these environment variables on the host:
 
-- `AUTH_PASSWORD`, the shared password;
 - `AUTH_SECRET`, 32 or more random characters;
+- `SIGNUP_CODE`, only while someone still has to sign up. Remove it once both
+  people have accounts;
 - `FIREBASE_SERVICE_ACCOUNT`, the service-account JSON. In a dotenv file, wrap
   it in single quotes so its `\n` escapes survive.
 
@@ -137,7 +142,9 @@ No time zone setting is needed, because the app reads dates in
 
 - Sessions are signed cookies that last 30 days. Changing `AUTH_SECRET` signs
   everyone out.
-- Sign-in attempts are not rate-limited, so use a long passphrase.
+- Sign-in attempts are not rate-limited, so passwords need at least 12
+  characters. A wrong password and an unknown username get the same message.
+- Passwords are stored as scrypt hashes, never in plain text.
 - The Firebase Admin key bypasses Firestore security rules. Keep it out of the
   repository and out of the browser.
 
