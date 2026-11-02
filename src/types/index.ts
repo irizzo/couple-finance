@@ -82,6 +82,29 @@ export interface Budget {
 export type SetBudgetInput = Omit<Budget, "id">;
 
 /**
+ * One of the two people. The app is for exactly two: the second to sign up
+ * becomes the first one's partner, and sign-up closes.
+ */
+export interface User {
+	id: string;
+	username: string; // lowercase, unique, immutable
+	name: string;
+	passwordHash: string; // never leaves src/database, except to sign-in
+	useSaldos: boolean;
+	partnerId: string | null;
+	sessionVersion: number; // bumped on password change
+}
+
+/** What pages and components may see. Never carries the hash. */
+export type SessionUser = Pick<
+	User,
+	"id" | "username" | "name" | "useSaldos" | "partnerId"
+>;
+
+/** What the data layer needs to scope a call. `SessionUser` satisfies it. */
+export type Owner = Pick<User, "id" | "useSaldos">;
+
+/**
  * Optional on input, but always stored: an omitted description is written as
  * `""`, so a document never reads back `undefined` against a `string` type.
  */
@@ -116,6 +139,11 @@ export type UpdateCategoryInput = Partial<
 
 export type CreateTransactionInput = Omit<Transaction, "id">;
 export type UpdateTransactionInput = Partial<CreateTransactionInput>;
+
+/** `password` is the plain text: `createUser` hashes it, and stores only the hash. */
+export type CreateUserInput = Pick<User, "username" | "name" | "useSaldos"> & {
+	password: string;
+};
 
 export interface ListOptions {
 	includeArchived?: boolean;

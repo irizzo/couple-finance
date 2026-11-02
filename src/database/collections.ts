@@ -7,6 +7,7 @@ export const COLLECTIONS = {
 	categories: "categories",
 	transactions: "transactions",
 	budgets: "budgets",
+	users: "users",
 } as const;
 
 /**
