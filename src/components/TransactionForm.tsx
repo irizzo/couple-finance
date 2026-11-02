@@ -13,6 +13,12 @@ interface TransactionFormProps {
 	accounts: SelectOption[];
 	saldos: SelectOption[];
 	categories: SelectOption[];
+	/**
+	 * The user's saldo mode. Off, neither saldo select is rendered, so the
+	 * adapter reads both as absent and an edit keeps whatever saldo the
+	 * transaction was recorded with.
+	 */
+	showSaldos: boolean;
 	initial: TransactionFormValues;
 	/** Present when editing; omitted when creating. */
 	transactionId?: string;
@@ -37,6 +43,7 @@ export interface TransactionFormValues {
 	totalAmount: string;
 	realAmount: string;
 	accountId: string;
+	/** `""` when the transaction has no saldo. */
 	saldoId: string;
 	categoryId: string;
 	type: string;
@@ -58,13 +65,15 @@ export interface TransactionFormValues {
  * block saving an expense.
  *
  * The saldo and categoria selects are independent. Since Phase 1 a category
- * does not belong to a saldo, so neither choice constrains the other.
+ * does not belong to a saldo, so neither choice constrains the other. With
+ * saldos off (`showSaldos`), there are no saldo selects at all.
  */
 export function TransactionForm({
 	action,
 	accounts,
 	saldos,
 	categories,
+	showSaldos,
 	initial,
 	transactionId,
 	submitLabel,
@@ -274,28 +283,30 @@ export function TransactionForm({
 						</select>
 					</Field>
 				</div>
-				<div className={styles.grow}>
-					<Field
-						error={fieldError("saldoId")}
-						label={transfer ? "Saldo de origem" : "Saldo"}
-						name="saldoId"
-					>
-						<select
-							aria-invalid={Boolean(fieldError("saldoId"))}
-							defaultValue={value("saldoId")}
-							id="saldoId"
+				{showSaldos && (
+					<div className={styles.grow}>
+						<Field
+							error={fieldError("saldoId")}
+							label={transfer ? "Saldo de origem" : "Saldo"}
 							name="saldoId"
-							required={true}
 						>
-							<option value="">Selecione…</option>
-							{saldos.map((option) => (
-								<option key={option.id} value={option.id}>
-									{option.label}
-								</option>
-							))}
-						</select>
-					</Field>
-				</div>
+							<select
+								aria-invalid={Boolean(fieldError("saldoId"))}
+								defaultValue={value("saldoId")}
+								id="saldoId"
+								name="saldoId"
+								required={true}
+							>
+								<option value="">Selecione…</option>
+								{saldos.map((option) => (
+									<option key={option.id} value={option.id}>
+										{option.label}
+									</option>
+								))}
+							</select>
+						</Field>
+					</div>
+				)}
 				<div className={styles.grow}>
 					<Field
 						error={fieldError("categoryId")}
@@ -322,11 +333,19 @@ export function TransactionForm({
 
 			{transfer && (
 				<div className={styles.destination}>
-					<p className={styles.help}>
-						O destino pode repetir a <strong>conta</strong> ou o{" "}
-						<strong>saldo</strong> da origem — para mover dinheiro entre saldos
-						da mesma conta, ou entre contas do mesmo saldo — mas não os dois.
-					</p>
+					{showSaldos ? (
+						<p className={styles.help}>
+							O destino pode repetir a <strong>conta</strong> ou o{" "}
+							<strong>saldo</strong> da origem — para mover dinheiro entre
+							saldos da mesma conta, ou entre contas do mesmo saldo — mas não os
+							dois.
+						</p>
+					) : (
+						<p className={styles.help}>
+							O dinheiro sai da conta de origem e entra na{" "}
+							<strong>conta de destino</strong>, que precisa ser outra.
+						</p>
+					)}
 					<div className={styles.grow}>
 						<Field
 							error={fieldError("toAccountId")}
@@ -349,28 +368,30 @@ export function TransactionForm({
 							</select>
 						</Field>
 					</div>
-					<div className={styles.grow}>
-						<Field
-							error={fieldError("toSaldoId")}
-							label="Saldo de destino"
-							name="toSaldoId"
-						>
-							<select
-								aria-invalid={Boolean(fieldError("toSaldoId"))}
-								defaultValue={value("toSaldoId")}
-								id="toSaldoId"
+					{showSaldos && (
+						<div className={styles.grow}>
+							<Field
+								error={fieldError("toSaldoId")}
+								label="Saldo de destino"
 								name="toSaldoId"
-								required={true}
 							>
-								<option value="">Selecione…</option>
-								{saldos.map((option) => (
-									<option key={option.id} value={option.id}>
-										{option.label}
-									</option>
-								))}
-							</select>
-						</Field>
-					</div>
+								<select
+									aria-invalid={Boolean(fieldError("toSaldoId"))}
+									defaultValue={value("toSaldoId")}
+									id="toSaldoId"
+									name="toSaldoId"
+									required={true}
+								>
+									<option value="">Selecione…</option>
+									{saldos.map((option) => (
+										<option key={option.id} value={option.id}>
+											{option.label}
+										</option>
+									))}
+								</select>
+							</Field>
+						</div>
+					)}
 				</div>
 			)}
 

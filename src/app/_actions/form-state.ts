@@ -54,6 +54,20 @@ export function textField(formData: FormData, field: string): string {
 	return typeof value === "string" ? value : "";
 }
 
+/**
+ * Like `textField`, but a field the form did not render at all comes back as
+ * `undefined`, not `""`. An update then keeps the stored value: with saldos off
+ * the transaction form has no saldo fields, and an edit must not erase the
+ * saldo a transaction was recorded with. A rendered but emptied field is still
+ * `""`.
+ */
+export function presentField(
+	formData: FormData,
+	field: string,
+): string | undefined {
+	return formData.has(field) ? textField(formData, field) : undefined;
+}
+
 /** Collects the text entries of a submission, for the `values` echo. */
 export function formValues(formData: FormData): Record<string, string> {
 	const values: Record<string, string> = {};

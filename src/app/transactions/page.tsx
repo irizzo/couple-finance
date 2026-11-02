@@ -38,9 +38,11 @@ export default async function TransactionsPage({
 	const month = resolveMonth(params.month);
 	const { from, to } = monthBounds(month);
 
+	// With saldos off there is no saldo filter, so a `saldoId` left in the URL
+	// must not narrow the list invisibly.
 	const selected = {
 		accountId: filterValue(params.accountId),
-		saldoId: filterValue(params.saldoId),
+		saldoId: user.useSaldos ? filterValue(params.saldoId) : undefined,
 		categoryId: filterValue(params.categoryId),
 	};
 
@@ -95,7 +97,7 @@ export default async function TransactionsPage({
 
 	const nothingConfigured =
 		accounts.data.length === 0 ||
-		saldos.data.length === 0 ||
+		(user.useSaldos && saldos.data.length === 0) ||
 		categories.data.length === 0;
 
 	const filtered = Boolean(
@@ -108,9 +110,11 @@ export default async function TransactionsPage({
 
 			{nothingConfigured ? (
 				<p className={styles.lead}>
-					Antes de lançar uma transação é preciso ter ao menos uma conta, um
-					saldo e uma categoria.{" "}
-					<Link href="/settings/accounts">Ir para configurações</Link>.
+					Antes de lançar uma transação é preciso ter ao menos{" "}
+					{user.useSaldos
+						? "uma conta, um saldo e uma categoria"
+						: "uma conta e uma categoria"}
+					. <Link href="/settings/accounts">Ir para configurações</Link>.
 				</p>
 			) : (
 				<>
@@ -121,6 +125,7 @@ export default async function TransactionsPage({
 						month={month}
 						saldos={saldos.data}
 						selected={selected}
+						showSaldo={user.useSaldos}
 					/>
 					<TransactionsTable
 						accounts={indexById(accounts.data)}
@@ -132,6 +137,7 @@ export default async function TransactionsPage({
 								: `Nenhum lançamento em ${formatMonthLabel(month)}.`
 						}
 						saldos={indexById(saldos.data)}
+						showSaldo={user.useSaldos}
 						transactions={transactions.data}
 					/>
 				</>

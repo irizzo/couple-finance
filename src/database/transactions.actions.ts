@@ -17,6 +17,7 @@ import {
 	isoDate,
 	nonEmptyString,
 	nonNegativeNumber,
+	optionalId,
 	round2,
 } from "@/database/validators";
 import {
@@ -74,29 +75,40 @@ type Posted = Pick<
  * an account (or a saldo), that document gets a debit and a matching credit,
  * which `accumulate` cancels into no write at all.
  *
+ * A saldo moves only when the document names one. The document decides, not
+ * the owner's current saldo mode: a transaction recorded with saldos off moves
+ * accounts only, and one recorded before they were switched off still moves
+ * its saldo.
+ *
  * Pass `sign: -1` to reverse a posting.
  */
 function postings(txn: Posted, sign = 1): Posting[] {
-	const moved = (direction: number): Delta => ({
-		total: sign * direction * txn.totalAmount,
-		real: sign * direction * txn.realAmount,
-	});
-	if (txn.type === TransactionType.TRANSFER) {
-		// Validation refuses a transfer without both destination ids, so the
+	const moves: Posting[] = [];
+	const move = (docRef: DocumentReference, direction: number) =>
+		moves.push({
+			docRef,
+			delta: {
+				total: sign * direction * txn.totalAmount,
+				real: sign * direction * txn.realAmount,
+			},
+		});
+	const transfer = txn.type === TransactionType.TRANSFER;
+	// A transfer's origin is debited like an expense.
+	const direction = transfer || txn.type === TransactionType.EXPENSE ? -1 : 1;
+	move(accountRef(txn.accountId), direction);
+	if (txn.saldoId) {
+		move(saldoRef(txn.saldoId), direction);
+	}
+	if (transfer) {
+		// Validation refuses a transfer without a destination account, so the
 		// fallback only meets a document written outside the app — and `doc("")`
 		// throws, which the caller's catch turns into a failed result.
-		return [
-			{ docRef: accountRef(txn.accountId), delta: moved(-1) },
-			{ docRef: saldoRef(txn.saldoId), delta: moved(-1) },
-			{ docRef: accountRef(txn.toAccountId ?? ""), delta: moved(1) },
-			{ docRef: saldoRef(txn.toSaldoId ?? ""), delta: moved(1) },
-		];
+		move(accountRef(txn.toAccountId ?? ""), 1);
+		if (txn.toSaldoId) {
+			move(saldoRef(txn.toSaldoId), 1);
+		}
 	}
-	const direction = txn.type === TransactionType.EXPENSE ? -1 : 1;
-	return [
-		{ docRef: accountRef(txn.accountId), delta: moved(direction) },
-		{ docRef: saldoRef(txn.saldoId), delta: moved(direction) },
-	];
+	return moves;
 }
 
 interface Target {
@@ -106,34 +118,39 @@ interface Target {
 }
 
 /**
- * Everything a transaction points at: its account, saldo and category, plus a
- * transfer's destination pair.
+ * Everything a transaction points at: its account, category and saldo (when it
+ * has one), plus a transfer's destination account and saldo (likewise).
  */
 function targetsOf(txn: Posted & Pick<Transaction, "categoryId">): Target[] {
 	const targets: Target[] = [
 		{ label: "Account", id: txn.accountId, docRef: accountRef(txn.accountId) },
-		{ label: "Saldo", id: txn.saldoId, docRef: saldoRef(txn.saldoId) },
 		{
 			label: "Category",
 			id: txn.categoryId,
 			docRef: categoryRef(txn.categoryId),
 		},
 	];
+	if (txn.saldoId) {
+		targets.push({
+			label: "Saldo",
+			id: txn.saldoId,
+			docRef: saldoRef(txn.saldoId),
+		});
+	}
 	if (txn.type === TransactionType.TRANSFER) {
 		const toAccountId = txn.toAccountId ?? "";
-		const toSaldoId = txn.toSaldoId ?? "";
-		targets.push(
-			{
-				label: "Destination account",
-				id: toAccountId,
-				docRef: accountRef(toAccountId),
-			},
-			{
+		targets.push({
+			label: "Destination account",
+			id: toAccountId,
+			docRef: accountRef(toAccountId),
+		});
+		if (txn.toSaldoId) {
+			targets.push({
 				label: "Destination saldo",
-				id: toSaldoId,
-				docRef: saldoRef(toSaldoId),
-			},
-		);
+				id: txn.toSaldoId,
+				docRef: saldoRef(txn.toSaldoId),
+			});
+		}
 	}
 	return targets;
 }
@@ -152,27 +169,50 @@ function strip(input: UpdateTransactionInput): UpdateTransactionInput {
  * move between saldos inside one account, or between accounts under one saldo
  * — but not both, since that would move nothing. The clash is reported on both
  * fields, because changing either one resolves it.
+ *
+ * With no saldo on either end, the accounts alone must differ, and the clash is
+ * reported on the account only: with saldos off, the form has no saldo field
+ * to show it on.
  */
 function validateDestination(
 	input: CreateTransactionInput,
+	useSaldos: boolean,
 ): Record<string, string | null> {
 	const toAccountId = nonEmptyString(input.toAccountId);
-	const toSaldoId = nonEmptyString(input.toSaldoId);
+	const toSaldoId = useSaldos
+		? nonEmptyString(input.toSaldoId)
+		: optionalId(input.toSaldoId);
+	// `""` and absent both mean "no saldo".
+	const fromSaldo = input.saldoId || undefined;
+	const toSaldo = input.toSaldoId || undefined;
+	const saldoInvolved = fromSaldo !== undefined || toSaldo !== undefined;
 	const sameEnds =
 		toAccountId === null &&
 		toSaldoId === null &&
 		input.toAccountId === input.accountId &&
-		input.toSaldoId === input.saldoId;
-	const clash = sameEnds
-		? "account and saldo cannot both match the origin"
-		: null;
+		toSaldo === fromSaldo;
+	let clash: string | null = null;
+	if (sameEnds) {
+		clash = saldoInvolved
+			? "account and saldo cannot both match the origin"
+			: "must differ from the origin account";
+	}
 	return {
 		toAccountId: toAccountId ?? clash,
-		toSaldoId: toSaldoId ?? clash,
+		toSaldoId: toSaldoId ?? (saldoInvolved ? clash : null),
 	};
 }
 
-function validate(input: CreateTransactionInput): FieldErrors | null {
+/**
+ * With saldos on, a write must carry a saldo (and a transfer a destination
+ * saldo); with them off, it need not. Either way a saldo that is there is
+ * checked like any other target, so editing an older transaction with saldos
+ * off keeps, and still moves, the saldo it was recorded with.
+ */
+function validate(
+	input: CreateTransactionInput,
+	useSaldos: boolean,
+): FieldErrors | null {
 	const amountsAreNumbers =
 		nonNegativeNumber(input?.totalAmount) === null &&
 		nonNegativeNumber(input?.realAmount) === null;
@@ -180,7 +220,9 @@ function validate(input: CreateTransactionInput): FieldErrors | null {
 		date: isoDate(input?.date),
 		description: nonEmptyString(input?.description),
 		accountId: nonEmptyString(input?.accountId),
-		saldoId: nonEmptyString(input?.saldoId),
+		saldoId: useSaldos
+			? nonEmptyString(input?.saldoId)
+			: optionalId(input?.saldoId),
 		categoryId: nonEmptyString(input?.categoryId),
 		type: enumValue(input?.type, Object.values(TransactionType)),
 		totalAmount: nonNegativeNumber(input?.totalAmount),
@@ -190,7 +232,7 @@ function validate(input: CreateTransactionInput): FieldErrors | null {
 				? "cannot be greater than the total amount"
 				: null),
 		...(input?.type === TransactionType.TRANSFER
-			? validateDestination(input)
+			? validateDestination(input, useSaldos)
 			: {}),
 	});
 }
@@ -199,28 +241,35 @@ function validate(input: CreateTransactionInput): FieldErrors | null {
  * The document to store, field by field, so nothing else in `input` is ever
  * written. The owner comes from the argument, never from the input, and
  * `shared` is always written, as `false` until Phase U6 lets a form set it.
+ * A saldo is stored only when there is one, never as `""`.
  */
 function normalize(
 	input: CreateTransactionInput,
 	owner: Owner,
 ): Omit<Transaction, "id"> {
-	const data = {
+	const data: Omit<Transaction, "id"> = {
 		date: input.date,
 		description: input.description.trim(),
 		totalAmount: round2(input.totalAmount),
 		realAmount: round2(input.realAmount),
 		accountId: input.accountId,
-		saldoId: input.saldoId,
 		categoryId: input.categoryId,
 		type: input.type,
 		ownerId: owner.id,
 		shared: false,
 	};
+	if (input.saldoId) {
+		data.saldoId = input.saldoId;
+	}
 	// Only a transfer stores a destination. Turning one into an expense drops
 	// it, since every write here is a `tx.set` of the whole document.
-	return input.type === TransactionType.TRANSFER
-		? { ...data, toAccountId: input.toAccountId, toSaldoId: input.toSaldoId }
-		: data;
+	if (input.type === TransactionType.TRANSFER) {
+		data.toAccountId = input.toAccountId;
+		if (input.toSaldoId) {
+			data.toSaldoId = input.toSaldoId;
+		}
+	}
+	return data;
 }
 
 type Snapshots = Map<string, DocumentSnapshot<DocumentData>>;
@@ -308,7 +357,7 @@ export async function createTransaction(
 	owner: Owner,
 	input: CreateTransactionInput,
 ): Promise<ActionResult<Transaction>> {
-	const fieldErrors = validate(input);
+	const fieldErrors = validate(input, owner.useSaldos);
 	if (fieldErrors) {
 		return fail<Transaction>("Invalid transaction", fieldErrors);
 	}
@@ -429,8 +478,11 @@ export async function updateTransaction(
 			}
 
 			const current = withId<Transaction>(snap);
+			// A field the form did not send (`undefined`, dropped by `strip`) keeps
+			// its stored value: with saldos off the form has no saldo fields, and
+			// the transaction keeps its saldo.
 			const merged = { ...current, ...patch };
-			const fieldErrors = validate(merged);
+			const fieldErrors = validate(merged, owner.useSaldos);
 			if (fieldErrors) {
 				return fail<Transaction>("Invalid transaction", fieldErrors);
 			}

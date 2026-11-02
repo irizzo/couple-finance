@@ -84,7 +84,10 @@ export async function copyBudgetsForm(
 	}
 	const copiedPart =
 		copied === 1 ? "1 valor copiado" : `${copied} valores copiados`;
-	const skippedPart =
-		skipped === 0 ? "" : ` · ${skipped} já definido(s) ou arquivado(s)`;
+	// With saldos off, saldo plans are skipped too, so the note names them.
+	const skippedReasons = user.useSaldos
+		? "já definido(s) ou arquivado(s)"
+		: "já definido(s), arquivado(s) ou por saldo";
+	const skippedPart = skipped === 0 ? "" : ` · ${skipped} ${skippedReasons}`;
 	return { status: "ok", message: `${copiedPart}${skippedPart}` };
 }

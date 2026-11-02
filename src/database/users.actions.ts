@@ -12,8 +12,14 @@ import {
 	normalizedUsername,
 	username,
 } from "@/database/validators";
-import { hashPassword } from "@/lib/password";
-import type { CreateUserInput, SessionUser, User } from "@/types";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import type {
+	CreateUserInput,
+	Owner,
+	SessionUser,
+	UpdateProfileInput,
+	User,
+} from "@/types";
 
 const COLLECTION = COLLECTIONS.users;
 const LABEL = "User";
@@ -29,7 +35,8 @@ const FIRST_SESSION_VERSION = 1;
  * Users: the two people, each with a username, a display name and a password.
  *
  * **`passwordHash` never leaves this file except through `findCredentials`**,
- * which only sign-in calls. Every other read builds its result field by field
+ * which only sign-in calls. `changePassword` checks the current password here,
+ * for the same reason. Every other read builds its result field by field
  * rather than spreading the document, as `withId` would: a spread carries the
  * hash along at runtime, whatever the return type claims.
  */
@@ -195,5 +202,105 @@ export async function signUpOpen(): Promise<ActionResult<boolean>> {
 		return ok(snap.data().count < MAX_USERS);
 	} catch (cause) {
 		return failFrom<boolean>("Could not check whether sign-up is open", cause);
+	}
+}
+
+/**
+ * Perfil: the display name and the saldo mode. Switching saldos off deletes
+ * nothing; it only changes what a new transaction must carry and which screens
+ * show saldos.
+ */
+export async function updateProfile(
+	owner: Owner,
+	input: UpdateProfileInput,
+): Promise<ActionResult<VersionedUser>> {
+	if (input?.name === undefined && input?.useSaldos === undefined) {
+		return fail<VersionedUser>("Nothing to update");
+	}
+	const fieldErrors = collect({
+		...(input.name !== undefined ? { name: nonEmptyString(input.name) } : {}),
+		...(input.useSaldos !== undefined
+			? { useSaldos: booleanValue(input.useSaldos) }
+			: {}),
+	});
+	if (fieldErrors) {
+		return fail<VersionedUser>("Invalid profile", fieldErrors);
+	}
+
+	try {
+		return await db.runTransaction(async (tx) => {
+			const docRef = ref(COLLECTION).doc(owner.id);
+			const snap = await tx.get(docRef);
+			if (!snap.exists) {
+				return notFound<VersionedUser>(LABEL, owner.id);
+			}
+			const patch: UpdateProfileInput = {};
+			if (input.name !== undefined) {
+				patch.name = input.name.trim();
+			}
+			if (input.useSaldos !== undefined) {
+				patch.useSaldos = input.useSaldos;
+			}
+			tx.update(docRef, patch);
+			return ok(
+				toVersionedUser(snap.id, { ...(snap.data() as StoredUser), ...patch }),
+			);
+		});
+	} catch (cause) {
+		return failFrom<VersionedUser>("Could not update the profile", cause);
+	}
+}
+
+/**
+ * Replaces the password once the current one checks out, and bumps
+ * `sessionVersion`, so every session issued before — on every device — fails
+ * its next request. The caller re-issues this browser's cookie with the
+ * returned version.
+ *
+ * Both passwords are checked and hashed before the transaction, since scrypt
+ * is slow and a transaction may retry. If the stored hash changed in between,
+ * another change won the race, and this one is refused rather than undoing it.
+ */
+export async function changePassword(
+	owner: Owner,
+	currentPassword: string,
+	nextPassword: string,
+): Promise<ActionResult<VersionedUser>> {
+	const fieldErrors = collect({ newPassword: newPassword(nextPassword) });
+	if (fieldErrors) {
+		return fail<VersionedUser>("Invalid password change", fieldErrors);
+	}
+
+	try {
+		const docRef = ref(COLLECTION).doc(owner.id);
+		const snap = await docRef.get();
+		if (!snap.exists) {
+			return notFound<VersionedUser>(LABEL, owner.id);
+		}
+		const verified = (snap.data() as StoredUser).passwordHash;
+		if (!(await verifyPassword(currentPassword, verified))) {
+			return fail<VersionedUser>("Invalid password change", {
+				currentPassword: "is incorrect",
+			});
+		}
+		const passwordHash = await hashPassword(nextPassword);
+
+		return await db.runTransaction(async (tx) => {
+			const fresh = await tx.get(docRef);
+			const data = fresh.data() as StoredUser | undefined;
+			if (!data) {
+				return notFound<VersionedUser>(LABEL, owner.id);
+			}
+			if (data.passwordHash !== verified) {
+				return fail<VersionedUser>(
+					"The password was changed meanwhile; try again",
+				);
+			}
+			const sessionVersion = data.sessionVersion + 1;
+			tx.update(docRef, { passwordHash, sessionVersion });
+			return ok(toVersionedUser(fresh.id, { ...data, sessionVersion }));
+		});
+	} catch (cause) {
+		return failFrom<VersionedUser>("Could not change the password", cause);
 	}
 }

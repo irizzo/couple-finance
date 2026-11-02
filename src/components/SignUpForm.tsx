@@ -5,6 +5,7 @@ import { type FormAction, IDLE_FORM_STATE } from "@/app/_actions/form-state";
 import { PASSWORD_MIN_LENGTH } from "@/database/validators";
 import { ErrorBanner } from "./ErrorBanner";
 import { Field } from "./Field";
+import { SaldoModeField } from "./SaldoModeField";
 import styles from "./SignUpForm.module.css";
 import { SubmitButton } from "./SubmitButton";
 
@@ -20,7 +21,6 @@ interface SignUpFormProps {
 export function SignUpForm({ action }: SignUpFormProps) {
 	const [state, signUp] = useActionState(action, IDLE_FORM_STATE);
 	const fieldError = (field: string) => state.fieldErrors?.[field];
-	const accountsOnly = state.values?.useSaldos === "false";
 
 	return (
 		<form action={signUp} className={styles.form}>
@@ -103,45 +103,10 @@ export function SignUpForm({ action }: SignUpFormProps) {
 					type="password"
 				/>
 			</Field>
-			<fieldset className={styles.modes}>
-				<legend className={styles.legend}>Como organizar as finanças</legend>
-				<label className={styles.mode} htmlFor="useSaldos">
-					<input
-						defaultChecked={!accountsOnly}
-						id="useSaldos"
-						name="useSaldos"
-						type="radio"
-						value="true"
-					/>
-					<span className={styles.modeText}>
-						<strong>Contas e saldos</strong>
-						<span className={styles.modeHint}>
-							Cada lançamento sai de uma conta e de um saldo, como “Essenciais”
-							ou “Lazer”.
-						</span>
-					</span>
-				</label>
-				<label className={styles.mode} htmlFor="useSaldos-accounts">
-					<input
-						defaultChecked={accountsOnly}
-						id="useSaldos-accounts"
-						name="useSaldos"
-						type="radio"
-						value="false"
-					/>
-					<span className={styles.modeText}>
-						<strong>Só contas</strong>
-						<span className={styles.modeHint}>
-							Cada lançamento sai só de uma conta.
-						</span>
-					</span>
-				</label>
-				{fieldError("useSaldos") && (
-					<span className={styles.error} role="alert">
-						{fieldError("useSaldos")}
-					</span>
-				)}
-			</fieldset>
+			<SaldoModeField
+				error={fieldError("useSaldos")}
+				useSaldos={state.values?.useSaldos !== "false"}
+			/>
 			<SubmitButton pendingLabel="Criando…">Criar conta</SubmitButton>
 		</form>
 	);

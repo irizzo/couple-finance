@@ -12,14 +12,21 @@ export interface Transaction {
 	realAmount: number;
 	/** On a transfer, the origin: where the money leaves from. */
 	accountId: string;
-	saldoId: string;
+	/**
+	 * Absent on a transaction recorded with saldos off ("Só contas"), and kept
+	 * on one recorded before they were switched off. Like the destination
+	 * fields, `undefined` is a real state, not a missing backfill: the document,
+	 * not the current preference, decides which balances move.
+	 */
+	saldoId?: string;
 	categoryId: string;
 	type: TransactionType;
 	/**
 	 * Transfer only: where the money lands. Stored on transfers and absent on
 	 * every other type, so `undefined` here is a real state rather than a missing
 	 * backfill. The destination may repeat the origin's account or its saldo, but
-	 * not both — that would move nothing.
+	 * not both — that would move nothing. `toSaldoId` is also absent on a
+	 * transfer recorded with saldos off.
 	 */
 	toAccountId?: string;
 	toSaldoId?: string;
@@ -157,6 +164,9 @@ export type CreateTransactionInput = Omit<
 	"id" | "ownerId" | "shared"
 >;
 export type UpdateTransactionInput = Partial<CreateTransactionInput>;
+
+/** What Perfil may change. The username is immutable. */
+export type UpdateProfileInput = Partial<Pick<User, "name" | "useSaldos">>;
 
 /** `password` is the plain text: `createUser` hashes it, and stores only the hash. */
 export type CreateUserInput = Pick<User, "username" | "name" | "useSaldos"> & {

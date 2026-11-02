@@ -13,6 +13,7 @@ import {
 	type FormState,
 	formValues,
 	fromResult,
+	presentField,
 	textField,
 } from "./form-state";
 import { requireUser } from "./session";
@@ -34,7 +35,8 @@ function readInput(formData: FormData): CreateTransactionInput {
 		totalAmount: parseAmount(formData.get("totalAmount")),
 		realAmount: parseAmount(formData.get("realAmount")),
 		accountId: textField(formData, "accountId"),
-		saldoId: textField(formData, "saldoId"),
+		// Absent, not `""`, when the form has no saldo fields (saldos off).
+		saldoId: presentField(formData, "saldoId"),
 		categoryId: textField(formData, "categoryId"),
 		// Unvalidated on the way in; `enumValue` in the action rejects anything
 		// that is not a real TransactionType and reports it as a field error.
@@ -42,7 +44,7 @@ function readInput(formData: FormData): CreateTransactionInput {
 		// Read whatever the type: the data layer requires them on a transfer and
 		// drops them from anything else.
 		toAccountId: textField(formData, "toAccountId"),
-		toSaldoId: textField(formData, "toSaldoId"),
+		toSaldoId: presentField(formData, "toSaldoId"),
 	};
 }
 

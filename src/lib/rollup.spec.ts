@@ -361,6 +361,33 @@ describe("buildBudgetRows", () => {
 		});
 	});
 
+	describe("a transaction recorded with saldos off", () => {
+		const noSaldo = expense(40, 20, { saldoId: undefined });
+
+		it("counts towards no saldo row, not even (removido)", () => {
+			const section = buildBudgetRows({
+				scope: "saldo",
+				entities: [target("essenciais")],
+				budgets: [budget("essenciais", 100, "saldo")],
+				transactions: [expense(30, 30), noSaldo],
+			});
+			expect(section.rows.map((row) => row.targetId)).toEqual(["essenciais"]);
+			expect(rowFor(section, "essenciais").spent).toEqual({
+				total: 30,
+				real: 30,
+			});
+			expect(section.spent).toEqual({ total: 30, real: 30 });
+		});
+
+		it("still counts towards its category", () => {
+			const row = rowFor(
+				categories([target("mercado")], [], [expense(30, 30), noSaldo]),
+				"mercado",
+			);
+			expect(row.spent).toEqual({ total: 70, real: 50 });
+		});
+	});
+
 	describe("section totals", () => {
 		it("sums the remainder over planned rows only", () => {
 			const section = categories(

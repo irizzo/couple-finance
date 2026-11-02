@@ -11,7 +11,8 @@ import { Money } from "./Money";
 import { TransactionRowActions } from "./TransactionRowActions";
 import styles from "./TransactionsTable.module.css";
 
-const COLUMN_COUNT = 9;
+/** Every column but Saldo, which `showSaldo` adds. */
+const BASE_COLUMN_COUNT = 8;
 
 interface TransactionsTableProps {
 	transactions: Transaction[];
@@ -20,6 +21,8 @@ interface TransactionsTableProps {
 	accounts: Map<string, Account>;
 	saldos: Map<string, Saldo>;
 	categories: Map<string, Category>;
+	/** The user's saldo mode: off, the Saldo column is not rendered. */
+	showSaldo: boolean;
 	emptyMessage: string;
 	/** Passed down rather than imported here: a Server Action is serializable
 	 * across the boundary, and this table stays a Server Component. */
@@ -53,7 +56,8 @@ function NameCell({ entity, archivedLabel }: NameCellProps) {
 
 interface EndsCellProps {
 	lookup: Map<string, NonNullable<NameCellProps["entity"]>>;
-	from: string;
+	/** `undefined` for a saldo the transaction does not have. */
+	from: string | undefined;
 	/** A transfer's destination; `undefined` for anything else. */
 	to: string | undefined;
 	archivedLabel: string;
@@ -62,15 +66,27 @@ interface EndsCellProps {
 /**
  * A transfer names both of its ends. An end it keeps — the same account, moving
  * between saldos — is named once: "Nubank → Nubank" says nothing more.
+ *
+ * A transaction recorded with saldos off has no saldo, which is a dash: unlike
+ * an id that no longer resolves, nothing is missing.
  */
 function EndsCell({ lookup, from, to, archivedLabel }: EndsCellProps) {
+	if (from === undefined && to === undefined) {
+		return <span className={styles.none}>—</span>;
+	}
+	const name = (id: string | undefined) =>
+		id === undefined ? (
+			<span className={styles.none}>—</span>
+		) : (
+			<NameCell archivedLabel={archivedLabel} entity={lookup.get(id)} />
+		);
 	return (
 		<>
-			<NameCell archivedLabel={archivedLabel} entity={lookup.get(from)} />
+			{name(from)}
 			{to !== undefined && to !== from && (
 				<>
 					<span> → </span>
-					<NameCell archivedLabel={archivedLabel} entity={lookup.get(to)} />
+					{name(to)}
 				</>
 			)}
 		</>
@@ -88,6 +104,7 @@ export function TransactionsTable({
 	accounts,
 	saldos,
 	categories,
+	showSaldo,
 	emptyMessage,
 	deleteAction,
 }: TransactionsTableProps) {
@@ -99,7 +116,7 @@ export function TransactionsTable({
 						<th scope="col">Data</th>
 						<th scope="col">Descrição</th>
 						<th scope="col">Conta</th>
-						<th scope="col">Saldo</th>
+						{showSaldo && <th scope="col">Saldo</th>}
 						<th scope="col">Categoria</th>
 						<th scope="col">Tipo</th>
 						<th className={styles.numeric} scope="col">
@@ -116,7 +133,10 @@ export function TransactionsTable({
 				<tbody>
 					{transactions.length === 0 ? (
 						<tr>
-							<td className={styles.empty} colSpan={COLUMN_COUNT}>
+							<td
+								className={styles.empty}
+								colSpan={showSaldo ? BASE_COLUMN_COUNT + 1 : BASE_COLUMN_COUNT}
+							>
 								{emptyMessage}
 							</td>
 						</tr>
@@ -147,14 +167,16 @@ export function TransactionsTable({
 											to={transfer ? txn.toAccountId : undefined}
 										/>
 									</td>
-									<td className={styles.tag}>
-										<EndsCell
-											archivedLabel="arquivado"
-											from={txn.saldoId}
-											lookup={saldos}
-											to={transfer ? txn.toSaldoId : undefined}
-										/>
-									</td>
+									{showSaldo && (
+										<td className={styles.tag}>
+											<EndsCell
+												archivedLabel="arquivado"
+												from={txn.saldoId}
+												lookup={saldos}
+												to={transfer ? txn.toSaldoId : undefined}
+											/>
+										</td>
+									)}
 									<td className={styles.tag}>
 										<NameCell
 											archivedLabel="arquivada"

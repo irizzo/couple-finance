@@ -81,13 +81,14 @@ export default async function EditTransactionPage({
 					totalAmount: String(txn.totalAmount),
 					realAmount: String(txn.realAmount),
 					accountId: txn.accountId,
-					saldoId: txn.saldoId,
+					saldoId: txn.saldoId ?? "",
 					categoryId: txn.categoryId,
 					type: txn.type,
 					toAccountId: txn.toAccountId ?? "",
 					toSaldoId: txn.toSaldoId ?? "",
 				}}
 				saldos={toOptions(saldos.data, "(arquivado)")}
+				showSaldos={user.useSaldos}
 				submitLabel="Salvar alterações"
 				transactionId={txn.id}
 			/>

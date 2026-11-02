@@ -8,6 +8,8 @@ interface TransactionFiltersProps {
 	accounts: Account[];
 	saldos: Saldo[];
 	categories: Category[];
+	/** The user's saldo mode: off, there is no saldo filter. */
+	showSaldo: boolean;
 	selected: TransactionFilterValues;
 }
 
@@ -33,6 +35,7 @@ export function TransactionFilters({
 	accounts,
 	saldos,
 	categories,
+	showSaldo,
 	selected,
 }: TransactionFiltersProps) {
 	const active = Boolean(
@@ -62,24 +65,26 @@ export function TransactionFilters({
 				</select>
 			</div>
 
-			<div className={styles.field}>
-				<label className={styles.label} htmlFor="saldoId">
-					Saldo
-				</label>
-				<select
-					defaultValue={selected.saldoId ?? ""}
-					id="saldoId"
-					name="saldoId"
-				>
-					<option value="">Todos</option>
-					{saldos.map((saldo) => (
-						<option key={saldo.id} value={saldo.id}>
-							{saldo.name}
-							{saldo.archived ? " (arquivado)" : ""}
-						</option>
-					))}
-				</select>
-			</div>
+			{showSaldo && (
+				<div className={styles.field}>
+					<label className={styles.label} htmlFor="saldoId">
+						Saldo
+					</label>
+					<select
+						defaultValue={selected.saldoId ?? ""}
+						id="saldoId"
+						name="saldoId"
+					>
+						<option value="">Todos</option>
+						{saldos.map((saldo) => (
+							<option key={saldo.id} value={saldo.id}>
+								{saldo.name}
+								{saldo.archived ? " (arquivado)" : ""}
+							</option>
+						))}
+					</select>
+				</div>
+			)}
 
 			<div className={styles.field}>
 				<label className={styles.label} htmlFor="categoryId">

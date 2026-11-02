@@ -142,14 +142,20 @@ export interface BudgetSection {
 	remaining: number;
 }
 
-/** Keyed sums over whatever subset of transactions is handed in. */
+/**
+ * Keyed sums over whatever subset of transactions is handed in. A transaction
+ * whose key is `undefined` is left out of every sum.
+ */
 export function sumBy(
 	transactions: Transaction[],
-	keyOf: (txn: Transaction) => string,
+	keyOf: (txn: Transaction) => string | undefined,
 ): Map<string, AmountPair> {
 	const sums = new Map<string, AmountPair>();
 	for (const txn of transactions) {
 		const key = keyOf(txn);
+		if (key === undefined) {
+			continue;
+		}
 		sums.set(key, add(sums.get(key) ?? ZERO, txn));
 	}
 	for (const [key, pair] of sums) {
@@ -183,6 +189,8 @@ export function buildBudgetRows({
 	budgets: Budget[];
 	transactions: Transaction[];
 }): BudgetSection {
+	// A transaction recorded with saldos off has no saldo, so it counts towards
+	// no saldo row. Keyed by `""`, it would land on the "(removido)" row instead.
 	const keyOf = (txn: Transaction) =>
 		scope === "saldo" ? txn.saldoId : txn.categoryId;
 	const spending = sumBy(

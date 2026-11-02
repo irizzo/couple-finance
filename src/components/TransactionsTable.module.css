@@ -68,6 +68,11 @@
 	font-style: italic;
 }
 
+/* A saldo the transaction does not have: recorded with saldos off. */
+.none {
+	color: var(--muted);
+}
+
 .archivedHint {
 	color: var(--muted);
 	font-size: 0.75rem;

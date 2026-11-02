@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
 	archiveSaldoForm,
 	createSaldoForm,
@@ -31,6 +32,22 @@ interface SaldosPageProps {
 
 export default async function SaldosPage({ searchParams }: SaldosPageProps) {
 	const user = await requireUser();
+	if (!user.useSaldos) {
+		// The saldos are kept, not deleted; switching back shows them again.
+		return (
+			<div className={styles.page}>
+				<div className={styles.header}>
+					<h1>Saldos</h1>
+				</div>
+				<p className={styles.lead}>
+					Os saldos estão desligados: você organiza as finanças só por contas.
+					Os saldos que já existem continuam guardados. Para voltar a usá-los,
+					escolha “Contas e saldos” em{" "}
+					<Link href="/settings/profile">Perfil</Link>.
+				</p>
+			</div>
+		);
+	}
 	const { archived } = await searchParams;
 	const includeArchived = archived === "1";
 	const result = await listSaldos(user, { includeArchived });

@@ -49,6 +49,14 @@ export function optionalText(
 }
 
 /**
+ * A reference that may be absent: `undefined` and `""` both mean "none". A
+ * value that is there must be a non-empty string, like any other id.
+ */
+export function optionalId(value: unknown): string | null {
+	return value === undefined || value === "" ? null : nonEmptyString(value);
+}
+
+/**
  * The normalizer behind `optionalText`: a string comes back trimmed, anything
  * else as `""`. This is what turns "field absent" into a stored empty string.
  */

@@ -158,7 +158,8 @@ export async function deleteBudget(
  * number the user set by hand.
  *
  * Only the owner's budgets are copied, and only onto the owner's saldos and
- * categories.
+ * categories. While the owner has saldos off, saldo-scoped plans are skipped
+ * too: `/budget` has no saldo table to show them in.
  */
 export async function copyBudgets(
 	owner: Owner,
@@ -212,6 +213,7 @@ export async function copyBudgets(
 			// scope is skipped rather than crashing the whole copy.
 			if (
 				existing.has(id) ||
+				(budget.scope === "saldo" && !owner.useSaldos) ||
 				!activeByScope[budget.scope]?.has(budget.targetId)
 			) {
 				skipped += 1;

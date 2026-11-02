@@ -88,14 +88,17 @@ export default async function NewTransactionPage({
 
 	if (
 		accounts.data.length === 0 ||
-		saldos.data.length === 0 ||
+		(user.useSaldos && saldos.data.length === 0) ||
 		categories.data.length === 0
 	) {
 		return (
 			<div className={styles.page}>
 				{header}
 				<p className={styles.lead}>
-					É preciso ter ao menos uma conta, um saldo e uma categoria ativos
+					É preciso ter ao menos{" "}
+					{user.useSaldos
+						? "uma conta, um saldo e uma categoria ativos"
+						: "uma conta e uma categoria ativas"}{" "}
 					antes de lançar uma transação.{" "}
 					<Link href="/settings/accounts">Ir para configurações</Link>.
 				</p>
@@ -114,7 +117,7 @@ export default async function NewTransactionPage({
 					totalAmount: String(source.data.totalAmount),
 					realAmount: String(source.data.realAmount),
 					accountId: source.data.accountId,
-					saldoId: source.data.saldoId,
+					saldoId: source.data.saldoId ?? "",
 					categoryId: source.data.categoryId,
 					type: source.data.type,
 					toAccountId: source.data.toAccountId ?? "",
@@ -137,6 +140,7 @@ export default async function NewTransactionPage({
 				categories={toOptions(categories.data, "(arquivada)")}
 				initial={initial}
 				saldos={toOptions(saldos.data, "(arquivado)")}
+				showSaldos={user.useSaldos}
 				submitLabel="Salvar lançamento"
 			/>
 		</div>

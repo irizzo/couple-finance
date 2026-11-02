@@ -65,12 +65,15 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
 		return errorPage(categories.error);
 	}
 
-	const bySaldo = buildBudgetRows({
-		scope: "saldo",
-		entities: saldos.data,
-		budgets: budgets.data,
-		transactions: transactions.data,
-	});
+	// With saldos off there is no saldo table; the plans stay stored.
+	const bySaldo = user.useSaldos
+		? buildBudgetRows({
+				scope: "saldo",
+				entities: saldos.data,
+				budgets: budgets.data,
+				transactions: transactions.data,
+			})
+		: null;
 	const byCategory = buildBudgetRows({
 		scope: "category",
 		entities: categories.data,
@@ -78,43 +81,55 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
 		transactions: transactions.data,
 	});
 
-	const nothingConfigured =
-		saldos.data.length === 0 && categories.data.length === 0;
+	const nothingConfigured = user.useSaldos
+		? saldos.data.length === 0 && categories.data.length === 0
+		: categories.data.length === 0;
 
 	return (
 		<div className={styles.page}>
 			{header}
 
 			{nothingConfigured ? (
-				<p className={styles.lead}>
-					O orçamento é definido sobre os saldos e as categorias — crie ao menos
-					um de cada para começar a planejar.{" "}
-					<Link href="/settings/saldos">Ir para configurações</Link>.
-				</p>
+				user.useSaldos ? (
+					<p className={styles.lead}>
+						O orçamento é definido sobre os saldos e as categorias — crie ao
+						menos um de cada para começar a planejar.{" "}
+						<Link href="/settings/saldos">Ir para configurações</Link>.
+					</p>
+				) : (
+					<p className={styles.lead}>
+						O orçamento é definido sobre as categorias — crie ao menos uma para
+						começar a planejar.{" "}
+						<Link href="/settings/categories">Ir para configurações</Link>.
+					</p>
+				)
 			) : (
 				<>
 					<p className={styles.lead}>
 						Planejado contra gasto <strong>real</strong> — a sua parte, não o
 						que saiu da conta, que aparece em cinza embaixo. Só despesas entram:
-						uma receita no mês não "paga" um estouro. As duas tabelas somam os
-						mesmos lançamentos por eixos independentes, então os totais não se
-						correspondem. Deixe o campo vazio para remover um alvo do plano;
-						zero é uma meta de verdade.
+						uma receita no mês não "paga" um estouro.{" "}
+						{user.useSaldos &&
+							"As duas tabelas somam os mesmos lançamentos por eixos independentes, então os totais não se correspondem. "}
+						Deixe o campo vazio para remover um alvo do plano; zero é uma meta
+						de verdade.
 					</p>
 					<CopyBudgetsButton
 						action={copyBudgetsForm}
 						fromLabel={formatMonthLabel(shiftMonth(month, -1))}
 						month={month}
 					/>
-					<BudgetTable
-						archivedLabel="arquivado"
-						emptyMessage="Nenhum saldo ativo para planejar."
-						month={month}
-						section={bySaldo}
-						setAction={setBudgetForm}
-						targetLabel="Saldo"
-						title="Por saldo"
-					/>
+					{bySaldo && (
+						<BudgetTable
+							archivedLabel="arquivado"
+							emptyMessage="Nenhum saldo ativo para planejar."
+							month={month}
+							section={bySaldo}
+							setAction={setBudgetForm}
+							targetLabel="Saldo"
+							title="Por saldo"
+						/>
+					)}
 					<BudgetTable
 						archivedLabel="arquivada"
 						emptyMessage="Nenhuma categoria ativa para planejar."
