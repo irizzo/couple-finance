@@ -45,6 +45,9 @@ function readInput(formData: FormData): CreateTransactionInput {
 		// drops them from anything else.
 		toAccountId: textField(formData, "toAccountId"),
 		toSaldoId: presentField(formData, "toSaldoId"),
+		// An unchecked box is not submitted at all, so absent means "not
+		// shared"; the data layer also refuses to share anything but an expense.
+		shared: textField(formData, "shared") === "on",
 	};
 }
 

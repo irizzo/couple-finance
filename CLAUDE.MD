@@ -1,7 +1,7 @@
 # Couple Finance — spec and current state
 
-> Updated 2026-11-02, after Phase U5 of the new-features track (on top of
-> commit `1b6b8e9`, which is U3; U4 changed only data and docs). This file is the project's spec **and**
+> Updated 2026-11-03, after Phase U6 of the new-features track (on top of
+> commit `6409e74`, which is U5). This file is the project's spec **and**
 > the summary of where it stands: every convention below is in force, and every
 > decision worth knowing is recorded here with its reason. The plans and
 > implementation logs beside it in `docs/` are history (see "Docs map" at the
@@ -79,7 +79,7 @@ convenience.
 | **Plan, phases 1–7** | 1: categories decoupled from saldos. 2: app shell, design tokens, `src/lib`, form plumbing. 3: settings CRUD. 4: the monthly ledger. 5: create, edit, duplicate and delete transactions. 6: budgets by saldo and by category. 7: empty and error states, the 404 and the error boundary, dead code and the client `firebase` package removed, lint at zero errors. |
 | **Improvement track, phases A–E** | A–B: `description` on accounts, saldos and categories, in the data layer and then the UI. C: four defects fixed (below). D: Vitest over `src/lib`. E: Next 16.2.9 → 16.4.3 for published advisories, São Paulo time pinned in code, the shared-password gate, the data layer taken off the Server Action list, the Admin credential read from the environment. |
 | **Transfers** (commit `10d130c`) | A third transaction type that moves money between two account+saldo pairs. **Recorded in neither log**: this file is its only documentation. |
-| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done** (`1b6b8e9`): an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. **U4 done**: the real data migrated to the owner (`irizzo`) by a throwaway script, after a backup that is kept until U8. **U5 done**: Perfil (`/settings/profile`) for the name, the saldo mode and a password change that signs out every other session; with saldos off a transaction needs no saldo and no screen shows one. |
+| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done** (`1b6b8e9`): an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. **U4 done**: the real data migrated to the owner (`irizzo`) by a throwaway script, after a backup that is kept until U8. **U5 done**: Perfil (`/settings/profile`) for the name, the saldo mode and a password change that signs out every other session; with saldos off a transaction needs no saldo and no screen shows one. **U6 done**: an expense can be shared with the partner, read-only for them; `listSharedTransactions` is the one cross-owner read. |
 
 Every phase ended with `tsc`, lint and build clean, and from Phase 3 on, every
 phase that changed runtime behaviour was also checked by an end-to-end harness
@@ -239,7 +239,7 @@ export.
   about sessions. Callers pass the user from `requireUser()` as it is.
 * **`ownerId` is always written, and only from that argument.** Every create
   writes `ownerId: owner.id` beside `archived: false`; transactions also write
-  `shared` (always `false` until U6). No `Create*Input`/`Update*Input` type
+  `shared` (see "Sharing"). No `Create*Input`/`Update*Input` type
   carries `ownerId`, and `normalize` builds the stored transaction field by
   field, so a smuggled `ownerId` is never written. Firestore refuses to store
   `undefined`, so no unowned document can be created.
@@ -279,6 +279,27 @@ export.
   stored and come back with the switch. `buildBudgetRows` ignores saldo-less
   transactions in the saldo scope (not "(removido)"), and `copyBudgets` skips
   saldo plans while saldos are off, counting them as skipped.
+
+### Sharing (since Phase U6)
+
+* **Only an expense can be shared.** `normalize` stores `shared: type ===
+  EXPENSE && input.shared === true`, so turning a shared expense into a
+  receita or a transfer unshares it, as a non-transfer drops its destination.
+* **A shared expense is still the owner's alone.** It moves only the owner's
+  balances, and every by-id access stays `owned`, so the partner can neither
+  edit, duplicate, delete nor unshare it.
+* **`listSharedTransactions(viewer, {from, to})` is the only read that crosses
+  owners.** It keeps shared expenses of the viewer and the viewer's stored
+  `partnerId` (never anything from a request), and returns the
+  `SharedTransaction` projection — `id`, `date`, `description`,
+  `totalAmount`, `categoryName`, `ownerId` — built field by field even for
+  the viewer's own rows, so the account, saldo and real amount cannot leak
+  through it. Category names come from each owner's own categories, archived
+  included; a missing one is "(removida)". A viewer without an id gets
+  nothing. Anything else that crosses owners is a new decision, not a
+  variation of this.
+* **The data layer does not require a partner to share**; the form offers the
+  box only when one exists.
 
 ### Users (since Phase U1)
 
@@ -441,6 +462,13 @@ categories (12); `create`/`update`/`delete` for transactions (3);
 
 Behaviour specific to one screen, decided along the way.
 
+* **Sharing in the form.** "Compartilhar com {partner}" is a checkbox shown
+  only for a despesa (it follows the `type` state) and only once a partner
+  exists (`partnerName`, from `getPartnerName`). Its help says what the
+  partner sees and does not. Edit starts checked when shared, a duplicate
+  copies the flag, and after a refused submit the echo decides (an unchecked
+  box is simply absent). The ledger tags a shared row "Compartilhada", filled
+  rather than outlined so it never reads as a type badge.
 * **Saldos off ("Só contas").** The Saldos tab is hidden and
   `/settings/saldos` is a note; `TransactionForm` (`showSaldos`) renders no
   saldo selects and its transfer help says the destination must be another
@@ -648,9 +676,19 @@ end. The method that works, and the traps it took to find it:
   build, and the rest is data. Capture twice to prove it deterministic, and
   delete captures of real pages afterwards. Remove the worktree's
   `node_modules` link before `git worktree remove`.
+* **Budget Firestore reads.** The project has a daily quota, and the
+  database is the real one: on 2026-11-02 verification traffic exhausted it
+  (`8 RESOURCE_EXHAUSTED: Quota exceeded`), which also took the owner's app
+  down until the reset around midnight US Pacific. The heavy items were
+  U4's 231-page captures run four times and repeated full harness runs.
+  Prefer one full run plus targeted reruns; never repeat bulk captures; and
+  make cleanup survive a mid-run failure (a fixture sweep that only touches
+  usernames starting with `e2e-` and what they own).
 * **Mutation-check the harness** when the claim is a refusal: break the guard,
   rebuild, and confirm the checks turn red (U3: 38 red with `owned` reduced to
-  "exists", 19 with only `checkTargets`' owner test removed).
+  "exists", 19 with only `checkTargets`' owner test removed). A data-layer
+  function the harness imports and calls itself needs no rebuild: only code
+  reached through the server does.
 * **Running a data-layer module outside Next** needs Node 24's type stripping,
   `--experimental-transform-types` for the `TransactionType` enum, and a small
   resolve hook loaded with `--import` that maps `@/` onto `src/`. Since the
@@ -695,7 +733,8 @@ Raise them with the owner rather than building them unasked.
 
 **All four goals and both planned tracks are complete, and transfers have been
 added since.** A third track, new features (two users, shared expenses, a
-shared dashboard), is under way: U1–U5 of 8 are done. Every read and write is
+shared dashboard), is under way: U1–U6 of 8 are done, the last being sharing
+an expense with the partner. Every read and write is
 scoped to its user, and the real data belongs to the owner (`irizzo`), who
 sees exactly what they saw before U3. Each person manages their name, saldo
 mode and password in Perfil. **The partner may now sign up** at

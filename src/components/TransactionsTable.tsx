@@ -158,7 +158,12 @@ export function TransactionsTable({
 									}
 								>
 									<td className={styles.date}>{formatDayMonth(txn.date)}</td>
-									<td className={styles.description}>{txn.description}</td>
+									<td className={styles.description}>
+										{txn.description}
+										{txn.shared && (
+											<span className={styles.sharedTag}>Compartilhada</span>
+										)}
+									</td>
 									<td className={styles.tag}>
 										<EndsCell
 											archivedLabel="arquivada"

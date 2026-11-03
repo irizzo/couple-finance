@@ -26,10 +26,12 @@ import {
 	type CreateTransactionInput,
 	type Owner,
 	type Saldo,
+	type SharedTransaction,
 	type Transaction,
 	type TransactionFilters,
 	TransactionType,
 	type UpdateTransactionInput,
+	type Viewer,
 } from "@/types";
 
 const LABEL = "Transaction";
@@ -239,9 +241,10 @@ function validate(
 
 /**
  * The document to store, field by field, so nothing else in `input` is ever
- * written. The owner comes from the argument, never from the input, and
- * `shared` is always written, as `false` until Phase U6 lets a form set it.
- * A saldo is stored only when there is one, never as `""`.
+ * written. The owner comes from the argument, never from the input. `shared`
+ * is always written, and is `true` only on an expense: as with a transfer's
+ * destination, changing the type drops it. A saldo is stored only when there
+ * is one, never as `""`.
  */
 function normalize(
 	input: CreateTransactionInput,
@@ -256,7 +259,7 @@ function normalize(
 		categoryId: input.categoryId,
 		type: input.type,
 		ownerId: owner.id,
-		shared: false,
+		shared: input.type === TransactionType.EXPENSE && input.shared === true,
 	};
 	if (input.saldoId) {
 		data.saldoId = input.saldoId;
@@ -456,6 +459,101 @@ export async function listTransactions(
 		return ok(matches);
 	} catch (cause) {
 		return failFrom<Transaction[]>("Could not list the transactions", cause);
+	}
+}
+
+/**
+ * The shared expenses of the viewer and of the viewer's partner, in a date
+ * range, newest first: **the only read that crosses owners.**
+ *
+ * It returns the `SharedTransaction` projection, built field by field, even
+ * for the viewer's own rows: never the account, the saldo or the real amount.
+ * Whatever renders this cannot leak a field it was never given (the DTO
+ * pattern from Next's authentication guide).
+ *
+ * The same date-range query as `listTransactions`; the owners, `shared` and
+ * the type are filtered in memory, for the same reason. The partner is the
+ * viewer's stored `partnerId`, which only `createUser` writes, never anything
+ * from a request. Category names come from each owner's own categories,
+ * archived ones included, so a row never borrows the other person's name for
+ * an id.
+ */
+export async function listSharedTransactions(
+	viewer: Viewer,
+	range: Pick<TransactionFilters, "from" | "to">,
+): Promise<ActionResult<SharedTransaction[]>> {
+	const fieldErrors = collect({
+		from: isoDate(range?.from),
+		to: isoDate(range?.to),
+	});
+	if (fieldErrors) {
+		return fail<SharedTransaction[]>("Invalid range", fieldErrors);
+	}
+	if (range.from > range.to) {
+		return fail<SharedTransaction[]>(
+			"The start date must not be after the end date",
+		);
+	}
+	// A viewer without an id sees nothing, not even through a `partnerId`, as
+	// an owner without an id matches nothing in `owned`.
+	const isId = (id: unknown): id is string =>
+		typeof id === "string" && id !== "";
+	if (!isId(viewer?.id)) {
+		return ok([]);
+	}
+	const owners = isId(viewer.partnerId)
+		? [viewer.id, viewer.partnerId]
+		: [viewer.id];
+
+	try {
+		const [snap, ...categorySnaps] = await Promise.all([
+			ref(COLLECTIONS.transactions)
+				.where("date", ">=", range.from)
+				.where("date", "<=", range.to)
+				.orderBy("date", "desc")
+				.get(),
+			...owners.map((id) =>
+				ref(COLLECTIONS.categories).where("ownerId", "==", id).get(),
+			),
+		]);
+		const categoryNames = new Map(
+			owners.map((id, index) => [
+				id,
+				new Map(
+					categorySnaps[index].docs.map((doc) => [
+						doc.id,
+						String(doc.get("name")),
+					]),
+				),
+			]),
+		);
+
+		const rows = snap.docs
+			.filter(
+				(doc) =>
+					doc.get("shared") === true &&
+					doc.get("type") === TransactionType.EXPENSE &&
+					owners.includes(doc.get("ownerId")),
+			)
+			.map((doc): SharedTransaction => {
+				const ownerId: string = doc.get("ownerId");
+				return {
+					id: doc.id,
+					date: doc.get("date"),
+					description: doc.get("description"),
+					totalAmount: doc.get("totalAmount"),
+					categoryName:
+						categoryNames.get(ownerId)?.get(doc.get("categoryId")) ??
+						"(removida)",
+					ownerId,
+				};
+			});
+		return ok(rows);
+	} catch (cause) {
+		return failFrom<SharedTransaction[]>(
+			"Could not list the shared transactions",
+			cause,
+		);
 	}
 }
 

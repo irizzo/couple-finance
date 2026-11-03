@@ -47,6 +47,18 @@
 	font-weight: 500;
 }
 
+/* Shared with the partner: filled, so it never reads as a type badge. */
+.sharedTag {
+	margin-left: var(--space-2);
+	padding: 0 var(--space-2);
+	border-radius: 999px;
+	background: var(--accent-soft);
+	color: var(--accent);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
 .tag {
 	color: var(--muted);
 	font-size: 0.875rem;

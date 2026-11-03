@@ -19,6 +19,11 @@ interface TransactionFormProps {
 	 * transaction was recorded with.
 	 */
 	showSaldos: boolean;
+	/**
+	 * The partner's display name, or `null` before the partner has signed up.
+	 * The "Compartilhar com …" box is offered only when there is one.
+	 */
+	partnerName: string | null;
 	initial: TransactionFormValues;
 	/** Present when editing; omitted when creating. */
 	transactionId?: string;
@@ -50,6 +55,8 @@ export interface TransactionFormValues {
 	/** `""` unless the transaction is a transfer. */
 	toAccountId: string;
 	toSaldoId: string;
+	/** The one non-string default: a checkbox's checked state. */
+	shared: boolean;
 }
 
 /**
@@ -67,6 +74,10 @@ export interface TransactionFormValues {
  * The saldo and categoria selects are independent. Since Phase 1 a category
  * does not belong to a saldo, so neither choice constrains the other. With
  * saldos off (`showSaldos`), there are no saldo selects at all.
+ *
+ * Only a despesa can be shared, so the "Compartilhar" box follows the `type`
+ * state like the destination selects do, and appears only once there is a
+ * partner to share with.
  */
 export function TransactionForm({
 	action,
@@ -74,6 +85,7 @@ export function TransactionForm({
 	saldos,
 	categories,
 	showSaldos,
+	partnerName,
 	initial,
 	transactionId,
 	submitLabel,
@@ -89,8 +101,14 @@ export function TransactionForm({
 		initial.realAmount !== "" && initial.realAmount !== initial.totalAmount,
 	);
 
-	const value = (field: keyof TransactionFormValues) =>
+	const value = (field: Exclude<keyof TransactionFormValues, "shared">) =>
 		state.values?.[field] ?? initial[field];
+	// After a refused submit the echo decides, since an unchecked box is simply
+	// absent from it; falling back to `initial` would re-check a box the user
+	// had just cleared.
+	const sharedDefault = state.values
+		? state.values.shared === "on"
+		: initial.shared;
 	const fieldError = (field: string) => state.fieldErrors?.[field];
 
 	/** Mirror the total into the real share until the user takes it over. */
@@ -114,6 +132,9 @@ export function TransactionForm({
 	const defaultType = value("type");
 	const [type, setType] = useState(defaultType);
 	const transfer = type === "transfer";
+	// Matches the radios: anything that is not a receita or a transfer is shown
+	// as a despesa.
+	const expense = type !== "income" && !transfer;
 
 	function selectType(event: React.ChangeEvent<HTMLInputElement>) {
 		setType(event.target.value);
@@ -330,6 +351,25 @@ export function TransactionForm({
 					</Field>
 				</div>
 			</div>
+
+			{expense && partnerName !== null && (
+				<div className={styles.share}>
+					<label className={styles.shareLabel} htmlFor="shared">
+						<input
+							defaultChecked={sharedDefault}
+							id="shared"
+							name="shared"
+							type="checkbox"
+						/>
+						Compartilhar com {partnerName}
+					</label>
+					<p className={styles.shareHelp}>
+						{partnerName} verá a descrição, a data, o valor total, a categoria e
+						quem pagou — não a conta, o saldo nem o valor real. Só você pode
+						editar ou excluir este lançamento.
+					</p>
+				</div>
+			)}
 
 			{transfer && (
 				<div className={styles.destination}>

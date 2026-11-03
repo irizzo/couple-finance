@@ -32,10 +32,27 @@ export interface Transaction {
 	toSaldoId?: string;
 	ownerId: string;
 	/**
-	 * Always stored. Always `false` until Phase U6 puts the checkbox in the form;
-	 * written now so the U4 migration touches the real data only once.
+	 * Always stored. Only an expense can be shared: any other type stores
+	 * `false`, so turning a shared expense into a receita or a transfer unshares
+	 * it. A shared expense is still the owner's alone to edit, and moves only
+	 * the owner's balances; the partner sees it through `SharedTransaction`.
 	 */
 	shared: boolean;
+}
+
+/**
+ * A shared expense as either person may see it: these six fields and nothing
+ * else, even on the viewer's own rows. Never the account, the saldo or the
+ * real amount, which stay private to the owner.
+ */
+export interface SharedTransaction {
+	id: string;
+	date: string;
+	description: string;
+	totalAmount: number;
+	/** Resolved from the owner's categories; "(removida)" when gone. */
+	categoryName: string;
+	ownerId: string;
 }
 
 /**
@@ -125,6 +142,9 @@ export type SessionUser = Pick<
 /** What the data layer needs to scope a call. `SessionUser` satisfies it. */
 export type Owner = Pick<User, "id" | "useSaldos">;
 
+/** What the one cross-owner read needs: who is asking, and their partner. */
+export type Viewer = Pick<User, "id" | "partnerId">;
+
 /**
  * Optional on input, but always stored: an omitted description is written as
  * `""`, so a document never reads back `undefined` against a `string` type.
@@ -158,11 +178,11 @@ export type UpdateCategoryInput = Partial<
 	Pick<Category, "name" | "description">
 >;
 
-/** `shared` joins the input in Phase U6, with the checkbox that sets it. */
+/** `shared` is optional: absent means not shared. */
 export type CreateTransactionInput = Omit<
 	Transaction,
 	"id" | "ownerId" | "shared"
->;
+> & { shared?: boolean };
 export type UpdateTransactionInput = Partial<CreateTransactionInput>;
 
 /** What Perfil may change. The username is immutable. */

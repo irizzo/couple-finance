@@ -11,6 +11,7 @@ import { listAccounts } from "@/database/accounts.actions";
 import { listCategories } from "@/database/categories.actions";
 import { listSaldos } from "@/database/saldos.actions";
 import { getTransaction } from "@/database/transactions.actions";
+import { getPartnerName } from "@/database/users.actions";
 import { currentMonth, resolveMonth, today } from "@/lib/month";
 import styles from "../../pages.module.css";
 
@@ -29,6 +30,7 @@ const BLANK: TransactionFormValues = {
 	type: "expense",
 	toAccountId: "",
 	toSaldoId: "",
+	shared: false,
 };
 
 export default async function NewTransactionPage({
@@ -47,10 +49,11 @@ export default async function NewTransactionPage({
 
 	// Active entities only: an archived target may not receive a *new* posting,
 	// so offering one would only produce a rejection.
-	const [accounts, saldos, categories, source] = await Promise.all([
+	const [accounts, saldos, categories, partner, source] = await Promise.all([
 		listAccounts(user),
 		listSaldos(user),
 		listCategories(user),
+		getPartnerName(user),
 		from ? getTransaction(user, from) : Promise.resolve(null),
 	]);
 
@@ -82,6 +85,14 @@ export default async function NewTransactionPage({
 			<div className={styles.page}>
 				{header}
 				<ErrorBanner>{categories.error}</ErrorBanner>
+			</div>
+		);
+	}
+	if (!partner.ok) {
+		return (
+			<div className={styles.page}>
+				{header}
+				<ErrorBanner>{partner.error}</ErrorBanner>
 			</div>
 		);
 	}
@@ -122,6 +133,7 @@ export default async function NewTransactionPage({
 					type: source.data.type,
 					toAccountId: source.data.toAccountId ?? "",
 					toSaldoId: source.data.toSaldoId ?? "",
+					shared: source.data.shared === true,
 				}
 			: { ...BLANK, date: defaultDate };
 
@@ -139,6 +151,7 @@ export default async function NewTransactionPage({
 				cancelHref={backHref}
 				categories={toOptions(categories.data, "(arquivada)")}
 				initial={initial}
+				partnerName={partner.data}
 				saldos={toOptions(saldos.data, "(arquivado)")}
 				showSaldos={user.useSaldos}
 				submitLabel="Salvar lançamento"

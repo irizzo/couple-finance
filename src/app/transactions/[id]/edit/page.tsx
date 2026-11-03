@@ -8,6 +8,7 @@ import { listAccounts } from "@/database/accounts.actions";
 import { listCategories } from "@/database/categories.actions";
 import { listSaldos } from "@/database/saldos.actions";
 import { getTransaction } from "@/database/transactions.actions";
+import { getPartnerName } from "@/database/users.actions";
 import styles from "../../../pages.module.css";
 
 interface EditTransactionPageProps {
@@ -25,11 +26,12 @@ export default async function EditTransactionPage({
 	// Archived entities included: an existing transaction stays editable after
 	// its account has been archived, and an active-only list would silently drop
 	// the value the record currently holds.
-	const [existing, accounts, saldos, categories] = await Promise.all([
+	const [existing, accounts, saldos, categories, partner] = await Promise.all([
 		getTransaction(user, id),
 		listAccounts(user, { includeArchived: true }),
 		listSaldos(user, { includeArchived: true }),
 		listCategories(user, { includeArchived: true }),
+		getPartnerName(user),
 	]);
 
 	// Takes an href because the month is only knowable once the record has been
@@ -63,6 +65,9 @@ export default async function EditTransactionPage({
 	if (!categories.ok) {
 		return errorPage(categories.error);
 	}
+	if (!partner.ok) {
+		return errorPage(partner.error);
+	}
 
 	const txn = existing.data;
 	const backHref = `/transactions?month=${txn.date.slice(0, MONTH_LENGTH)}`;
@@ -86,7 +91,9 @@ export default async function EditTransactionPage({
 					type: txn.type,
 					toAccountId: txn.toAccountId ?? "",
 					toSaldoId: txn.toSaldoId ?? "",
+					shared: txn.shared === true,
 				}}
+				partnerName={partner.data}
 				saldos={toOptions(saldos.data, "(arquivado)")}
 				showSaldos={user.useSaldos}
 				submitLabel="Salvar alterações"
