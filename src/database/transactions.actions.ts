@@ -218,6 +218,7 @@ function validate(
 	const amountsAreNumbers =
 		nonNegativeNumber(input?.totalAmount) === null &&
 		nonNegativeNumber(input?.realAmount) === null;
+	const totalIsNumber = nonNegativeNumber(input?.totalAmount) === null;
 	return collect({
 		date: isoDate(input?.date),
 		description: nonEmptyString(input?.description),
@@ -236,15 +237,33 @@ function validate(
 		...(input?.type === TransactionType.TRANSFER
 			? validateDestination(input, useSaldos)
 			: {}),
+		// Only checked where it is stored. Like `realAmount`, it may not exceed
+		// the total, but it is not checked against `realAmount`: a bill split with
+		// other people too leaves room for their parts.
+		...(storesShare(input)
+			? {
+					sharedAmount:
+						nonNegativeNumber(input.sharedAmount) ??
+						(totalIsNumber && (input.sharedAmount as number) > input.totalAmount
+							? "cannot be greater than the total amount"
+							: null),
+				}
+			: {}),
 	});
+}
+
+/** A shared expense is the only document that stores `sharedAmount`. */
+function storesShare(input: CreateTransactionInput | undefined): boolean {
+	return input?.type === TransactionType.EXPENSE && input.shared === true;
 }
 
 /**
  * The document to store, field by field, so nothing else in `input` is ever
  * written. The owner comes from the argument, never from the input. `shared`
  * is always written, and is `true` only on an expense: as with a transfer's
- * destination, changing the type drops it. A saldo is stored only when there
- * is one, never as `""`.
+ * destination, changing the type drops it, and with it `sharedAmount`, which
+ * is stored only beside `shared: true`. A saldo is stored only when there is
+ * one, never as `""`.
  */
 function normalize(
 	input: CreateTransactionInput,
@@ -259,8 +278,11 @@ function normalize(
 		categoryId: input.categoryId,
 		type: input.type,
 		ownerId: owner.id,
-		shared: input.type === TransactionType.EXPENSE && input.shared === true,
+		shared: storesShare(input),
 	};
+	if (data.shared) {
+		data.sharedAmount = round2(input.sharedAmount as number);
+	}
 	if (input.saldoId) {
 		data.saldoId = input.saldoId;
 	}
@@ -468,6 +490,7 @@ export async function listTransactions(
  *
  * It returns the `SharedTransaction` projection, built field by field, even
  * for the viewer's own rows: never the account, the saldo or the real amount.
+ * `sharedAmount` is in it on purpose: it is what the other person owes.
  * Whatever renders this cannot leak a field it was never given (the DTO
  * pattern from Next's authentication guide).
  *
@@ -542,6 +565,10 @@ export async function listSharedTransactions(
 					date: doc.get("date"),
 					description: doc.get("description"),
 					totalAmount: doc.get("totalAmount"),
+					// Every shared expense stores one; none was shared before the
+					// field existed (checked on 2026-11-03), so 0 meets only a
+					// document edited outside the app.
+					sharedAmount: doc.get("sharedAmount") ?? 0,
 					categoryName:
 						categoryNames.get(ownerId)?.get(doc.get("categoryId")) ??
 						"(removida)",

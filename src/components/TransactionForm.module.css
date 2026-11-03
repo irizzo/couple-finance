@@ -135,6 +135,12 @@
 	accent-color: var(--accent);
 }
 
+/* The partner's part: a width, not `.narrow`'s flex-basis, which in this
+   column would become a height. */
+.shareAmount {
+	max-width: 11rem;
+}
+
 .shareHelp {
 	font-size: 0.8125rem;
 	color: var(--muted);

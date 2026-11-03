@@ -11,6 +11,11 @@ interface TransactionRowActionsProps {
 	id: string;
 	description: string;
 	deleteAction: FormAction;
+	/**
+	 * Carried on the Editar and Duplicar links, so saving lands back where the
+	 * row was opened: the shared dashboard passes `"shared"`, the ledger nothing.
+	 */
+	returnTo?: string;
 }
 
 /**
@@ -28,20 +33,22 @@ export function TransactionRowActions({
 	id,
 	description,
 	deleteAction,
+	returnTo,
 }: TransactionRowActionsProps) {
 	const [state, remove] = useActionState(deleteAction, IDLE_FORM_STATE);
+	const back = returnTo ? `returnTo=${encodeURIComponent(returnTo)}` : "";
 
 	return (
 		<div className={styles.rowActions}>
 			<Link
 				className={`${controls.button} ${controls.compact}`}
-				href={`/transactions/${id}/edit`}
+				href={`/transactions/${id}/edit${back ? `?${back}` : ""}`}
 			>
 				Editar
 			</Link>
 			<Link
 				className={`${controls.button} ${controls.compact}`}
-				href={`/transactions/new?from=${id}`}
+				href={`/transactions/new?from=${id}${back ? `&${back}` : ""}`}
 			>
 				Duplicar
 			</Link>

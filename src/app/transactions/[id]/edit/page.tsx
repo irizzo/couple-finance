@@ -9,19 +9,26 @@ import { listCategories } from "@/database/categories.actions";
 import { listSaldos } from "@/database/saldos.actions";
 import { getTransaction } from "@/database/transactions.actions";
 import { getPartnerName } from "@/database/users.actions";
+import { ledgerHref, ledgerPath, resolveReturnTo } from "@/lib/shared";
 import styles from "../../../pages.module.css";
 
 interface EditTransactionPageProps {
 	params: Promise<{ id: string }>;
+	searchParams: Promise<{ returnTo?: string }>;
 }
 
 const MONTH_LENGTH = 7;
 
 export default async function EditTransactionPage({
 	params,
+	searchParams,
 }: EditTransactionPageProps) {
 	const user = await requireUser();
 	const { id } = await params;
+	// Opened from the shared dashboard, the way back and the redirect after
+	// saving go there instead of to the ledger.
+	const returnTo = resolveReturnTo((await searchParams).returnTo);
+	const backLabel = returnTo ? "Voltar ao compartilhado" : "Voltar ao extrato";
 
 	// Archived entities included: an existing transaction stays editable after
 	// its account has been archived, and an active-only list would silently drop
@@ -40,7 +47,7 @@ export default async function EditTransactionPage({
 	const header = (backHref: string) => (
 		<div className={styles.header}>
 			<h1>Editar lançamento</h1>
-			<Link href={backHref}>Voltar ao extrato</Link>
+			<Link href={backHref}>{backLabel}</Link>
 		</div>
 	);
 
@@ -49,7 +56,7 @@ export default async function EditTransactionPage({
 	// action already distinguishes them.
 	const errorPage = (message: string) => (
 		<div className={styles.page}>
-			{header("/transactions")}
+			{header(ledgerPath(returnTo))}
 			<ErrorBanner>{message}</ErrorBanner>
 		</div>
 	);
@@ -70,7 +77,7 @@ export default async function EditTransactionPage({
 	}
 
 	const txn = existing.data;
-	const backHref = `/transactions?month=${txn.date.slice(0, MONTH_LENGTH)}`;
+	const backHref = ledgerHref(txn.date.slice(0, MONTH_LENGTH), returnTo);
 
 	return (
 		<div className={styles.page}>
@@ -92,8 +99,11 @@ export default async function EditTransactionPage({
 					toAccountId: txn.toAccountId ?? "",
 					toSaldoId: txn.toSaldoId ?? "",
 					shared: txn.shared === true,
+					sharedAmount:
+						txn.sharedAmount === undefined ? "" : String(txn.sharedAmount),
 				}}
 				partnerName={partner.data}
+				returnTo={returnTo}
 				saldos={toOptions(saldos.data, "(arquivado)")}
 				showSaldos={user.useSaldos}
 				submitLabel="Salvar alterações"

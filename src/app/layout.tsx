@@ -46,6 +46,7 @@ export default async function RootLayout({
 							{user && (
 								<nav aria-label="Seções" className={styles.nav}>
 									<NavLink href="/transactions">Transações</NavLink>
+									<NavLink href="/shared">Compartilhado</NavLink>
 									<NavLink href="/budget">Orçamento</NavLink>
 									<NavLink href="/settings">Configurações</NavLink>
 									<div className={styles.account}>

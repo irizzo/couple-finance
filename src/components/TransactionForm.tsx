@@ -1,12 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useCallback, useRef, useState } from "react";
 import { type FormAction, IDLE_FORM_STATE } from "@/app/_actions/form-state";
+import { round2 } from "@/database/validators";
 import controls from "./controls.module.css";
 import { Field } from "./Field";
 import { SubmitButton } from "./SubmitButton";
 import styles from "./TransactionForm.module.css";
+
+/**
+ * Total minus real, as an input value: the part of the bill that is not the
+ * owner's. `null` until both amounts are filled in, or when real exceeds total.
+ */
+function remainder(
+	total: HTMLInputElement | null,
+	real: HTMLInputElement | null,
+): string | null {
+	if (!total || !real || total.value === "" || real.value === "") {
+		return null;
+	}
+	const rest = Number(total.value) - Number(real.value);
+	return Number.isFinite(rest) && rest >= 0 ? String(round2(rest)) : null;
+}
 
 interface TransactionFormProps {
 	action: FormAction;
@@ -27,6 +43,12 @@ interface TransactionFormProps {
 	initial: TransactionFormValues;
 	/** Present when editing; omitted when creating. */
 	transactionId?: string;
+	/**
+	 * `"shared"` when the form was opened from the shared dashboard. Sent as a
+	 * hidden field, and the adapter redirects there after saving instead of to
+	 * the ledger.
+	 */
+	returnTo?: string;
 	submitLabel: string;
 	cancelHref: string;
 }
@@ -57,6 +79,8 @@ export interface TransactionFormValues {
 	toSaldoId: string;
 	/** The one non-string default: a checkbox's checked state. */
 	shared: boolean;
+	/** The partner's part; `""` unless the expense is shared. */
+	sharedAmount: string;
 }
 
 /**
@@ -77,7 +101,11 @@ export interface TransactionFormValues {
  *
  * Only a despesa can be shared, so the "Compartilhar" box follows the `type`
  * state like the destination selects do, and appears only once there is a
- * partner to share with.
+ * partner to share with. The partner's part is rendered only while the box is
+ * checked (a `sharing` state mirrors it), for the same reason as the
+ * destination: hidden but present, its `required` would block an unshared
+ * expense. It starts at total minus real and follows both, like `realAmount`
+ * follows the total, until the user types in it.
  */
 export function TransactionForm({
 	action,
@@ -88,6 +116,7 @@ export function TransactionForm({
 	partnerName,
 	initial,
 	transactionId,
+	returnTo,
 	submitLabel,
 	cancelHref,
 }: TransactionFormProps) {
@@ -111,11 +140,47 @@ export function TransactionForm({
 		: initial.shared;
 	const fieldError = (field: string) => state.fieldErrors?.[field];
 
+	const shareRef = useRef<HTMLInputElement>(null);
+	// Set whenever the part's input appears: a value that is not total minus
+	// real was chosen on purpose, and typing in the amounts must not replace it.
+	const shareEdited = useRef(false);
+	const [sharing, setSharing] = useState(sharedDefault);
+
+	/**
+	 * Runs when the part's input appears: the box was checked, or the type came
+	 * back to despesa. An empty field starts at total minus real.
+	 */
+	const attachShare = useCallback((input: HTMLInputElement | null) => {
+		shareRef.current = input;
+		if (input === null) {
+			return;
+		}
+		const rest = remainder(totalRef.current, realRef.current);
+		if (input.value === "" && rest !== null) {
+			input.value = rest;
+		}
+		shareEdited.current =
+			input.value !== "" &&
+			(rest === null || Number(input.value) !== Number(rest));
+	}, []);
+
+	/** Keep the part at total minus real until the user takes it over. */
+	function followShare() {
+		if (shareEdited.current || !shareRef.current) {
+			return;
+		}
+		const rest = remainder(totalRef.current, realRef.current);
+		if (rest !== null) {
+			shareRef.current.value = rest;
+		}
+	}
+
 	/** Mirror the total into the real share until the user takes it over. */
 	function mirrorTotal(event: React.ChangeEvent<HTMLInputElement>) {
 		if (!realEdited.current && realRef.current) {
 			realRef.current.value = event.target.value;
 		}
+		followShare();
 	}
 
 	function splitInHalf() {
@@ -125,6 +190,7 @@ export function TransactionForm({
 		}
 		realRef.current.value = (total / 2).toFixed(2);
 		realEdited.current = true;
+		followShare();
 	}
 
 	// The radios' defaults come from `initial` / `state.values` like every other
@@ -143,6 +209,7 @@ export function TransactionForm({
 	return (
 		<form action={submit} className={styles.form}>
 			{transactionId && <input name="id" type="hidden" value={transactionId} />}
+			{returnTo && <input name="returnTo" type="hidden" value={returnTo} />}
 
 			{state.status === "error" && !state.fieldErrors && (
 				<p className={styles.error} role="alert">
@@ -271,6 +338,7 @@ export function TransactionForm({
 							name="realAmount"
 							onChange={() => {
 								realEdited.current = true;
+								followShare();
 							}}
 							ref={realRef}
 							required={true}
@@ -355,18 +423,47 @@ export function TransactionForm({
 			{expense && partnerName !== null && (
 				<div className={styles.share}>
 					<label className={styles.shareLabel} htmlFor="shared">
+						{/* Follows `sharing`, not the echo, so the box and the part stay
+						    in step when the type leaves despesa and comes back. */}
 						<input
-							defaultChecked={sharedDefault}
+							defaultChecked={sharing}
 							id="shared"
 							name="shared"
+							onChange={(event) => setSharing(event.target.checked)}
 							type="checkbox"
 						/>
 						Compartilhar com {partnerName}
 					</label>
+					{sharing && (
+						<div className={styles.shareAmount}>
+							<Field
+								error={fieldError("sharedAmount")}
+								label={`Parte de ${partnerName}`}
+								name="sharedAmount"
+							>
+								<input
+									aria-invalid={Boolean(fieldError("sharedAmount"))}
+									defaultValue={value("sharedAmount")}
+									id="sharedAmount"
+									min="0"
+									name="sharedAmount"
+									onChange={() => {
+										shareEdited.current = true;
+									}}
+									ref={attachShare}
+									required={true}
+									step="0.01"
+									type="number"
+								/>
+							</Field>
+						</div>
+					)}
 					<p className={styles.shareHelp}>
-						{partnerName} verá a descrição, a data, o valor total, a categoria e
-						quem pagou — não a conta, o saldo nem o valor real. Só você pode
-						editar ou excluir este lançamento.
+						A parte de {partnerName} é o que {partnerName} deve a você por esta
+						despesa; começa em total menos real. {partnerName} verá a descrição,
+						a data, o valor total, essa parte, a categoria e quem pagou — não a
+						conta, o saldo nem o valor real. Só você pode editar ou excluir este
+						lançamento.
 					</p>
 				</div>
 			)}

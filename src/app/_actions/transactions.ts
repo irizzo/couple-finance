@@ -8,6 +8,7 @@ import {
 	updateTransaction,
 } from "@/database/transactions.actions";
 import { parseAmount } from "@/lib/money";
+import { ledgerHref } from "@/lib/shared";
 import type { CreateTransactionInput, TransactionType } from "@/types";
 import {
 	type FormState,
@@ -24,6 +25,10 @@ import { requireUser } from "./session";
  * A transaction write moves balances on **both** the account and the saldo it
  * references, and those balances surface on the settings screens as well as
  * here — so these revalidate the whole tree rather than one route.
+ *
+ * Create and update redirect to the ledger, or to the shared dashboard when
+ * the form carries `returnTo=shared`. `ledgerHref` matches that value against
+ * the one allowed, so the field cannot point the redirect anywhere else.
  */
 
 const MONTH_LENGTH = 7; // "YYYY-MM" out of an ISO "YYYY-MM-DD"
@@ -48,6 +53,11 @@ function readInput(formData: FormData): CreateTransactionInput {
 		// An unchecked box is not submitted at all, so absent means "not
 		// shared"; the data layer also refuses to share anything but an expense.
 		shared: textField(formData, "shared") === "on",
+		// Rendered only while the box is checked. Absent, an edit keeps the
+		// stored part; the data layer requires one only on a shared expense.
+		sharedAmount: formData.has("sharedAmount")
+			? parseAmount(formData.get("sharedAmount"))
+			: undefined,
 	};
 }
 
@@ -63,7 +73,12 @@ export async function createTransactionForm(
 	revalidatePath("/", "layout");
 	// Land on the month the transaction belongs to, not the month the form was
 	// opened from — they differ whenever you backdate or duplicate forward.
-	redirect(`/transactions?month=${result.data.date.slice(0, MONTH_LENGTH)}`);
+	redirect(
+		ledgerHref(
+			result.data.date.slice(0, MONTH_LENGTH),
+			textField(formData, "returnTo"),
+		),
+	);
 }
 
 export async function updateTransactionForm(
@@ -80,7 +95,12 @@ export async function updateTransactionForm(
 		return fromResult(result, formValues(formData));
 	}
 	revalidatePath("/", "layout");
-	redirect(`/transactions?month=${result.data.date.slice(0, MONTH_LENGTH)}`);
+	redirect(
+		ledgerHref(
+			result.data.date.slice(0, MONTH_LENGTH),
+			textField(formData, "returnTo"),
+		),
+	);
 }
 
 /**

@@ -38,10 +38,18 @@ export interface Transaction {
 	 * the owner's balances; the partner sees it through `SharedTransaction`.
 	 */
 	shared: boolean;
+	/**
+	 * Shared expenses only: the partner's part, what they owe the owner for this
+	 * expense. Between 0 and `totalAmount`, and stored only while `shared` is
+	 * true, so `undefined` is a real state. It is not derived from `realAmount`:
+	 * a bill may be split with other people too. It moves no balance; only the
+	 * shared dashboard's settlement reads it.
+	 */
+	sharedAmount?: number;
 }
 
 /**
- * A shared expense as either person may see it: these six fields and nothing
+ * A shared expense as either person may see it: these seven fields and nothing
  * else, even on the viewer's own rows. Never the account, the saldo or the
  * real amount, which stay private to the owner.
  */
@@ -50,6 +58,8 @@ export interface SharedTransaction {
 	date: string;
 	description: string;
 	totalAmount: number;
+	/** The part of whoever did not pay: what they owe the owner. */
+	sharedAmount: number;
 	/** Resolved from the owner's categories; "(removida)" when gone. */
 	categoryName: string;
 	ownerId: string;
@@ -178,7 +188,10 @@ export type UpdateCategoryInput = Partial<
 	Pick<Category, "name" | "description">
 >;
 
-/** `shared` is optional: absent means not shared. */
+/**
+ * `shared` is optional: absent means not shared. `sharedAmount` is required
+ * only on a shared expense, and dropped from anything else.
+ */
 export type CreateTransactionInput = Omit<
 	Transaction,
 	"id" | "ownerId" | "shared"

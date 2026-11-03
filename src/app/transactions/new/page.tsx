@@ -13,10 +13,11 @@ import { listSaldos } from "@/database/saldos.actions";
 import { getTransaction } from "@/database/transactions.actions";
 import { getPartnerName } from "@/database/users.actions";
 import { currentMonth, resolveMonth, today } from "@/lib/month";
+import { ledgerHref, resolveReturnTo } from "@/lib/shared";
 import styles from "../../pages.module.css";
 
 interface NewTransactionPageProps {
-	searchParams: Promise<{ month?: string; from?: string }>;
+	searchParams: Promise<{ month?: string; from?: string; returnTo?: string }>;
 }
 
 const BLANK: TransactionFormValues = {
@@ -31,15 +32,24 @@ const BLANK: TransactionFormValues = {
 	toAccountId: "",
 	toSaldoId: "",
 	shared: false,
+	sharedAmount: "",
 };
 
 export default async function NewTransactionPage({
 	searchParams,
 }: NewTransactionPageProps) {
 	const user = await requireUser();
-	const { month: requested, from } = await searchParams;
+	const {
+		month: requested,
+		from,
+		returnTo: requestedReturn,
+	} = await searchParams;
 	const month = resolveMonth(requested);
-	const backHref = `/transactions?month=${month}`;
+	// Opened from the shared dashboard, the way back and the redirect after
+	// saving go there instead of to the ledger.
+	const returnTo = resolveReturnTo(requestedReturn);
+	const backHref = ledgerHref(month, returnTo);
+	const backLabel = returnTo ? "Voltar ao compartilhado" : "Voltar ao extrato";
 
 	// Opening the form from a past or future month pre-dates it to that month's
 	// first day instead of today: otherwise saving would redirect to a different
@@ -60,7 +70,7 @@ export default async function NewTransactionPage({
 	const header = (
 		<div className={styles.header}>
 			<h1>{from ? "Duplicar lançamento" : "Novo lançamento"}</h1>
-			<Link href={backHref}>Voltar ao extrato</Link>
+			<Link href={backHref}>{backLabel}</Link>
 		</div>
 	);
 
@@ -134,6 +144,10 @@ export default async function NewTransactionPage({
 					toAccountId: source.data.toAccountId ?? "",
 					toSaldoId: source.data.toSaldoId ?? "",
 					shared: source.data.shared === true,
+					sharedAmount:
+						source.data.sharedAmount === undefined
+							? ""
+							: String(source.data.sharedAmount),
 				}
 			: { ...BLANK, date: defaultDate };
 
@@ -152,6 +166,7 @@ export default async function NewTransactionPage({
 				categories={toOptions(categories.data, "(arquivada)")}
 				initial={initial}
 				partnerName={partner.data}
+				returnTo={returnTo}
 				saldos={toOptions(saldos.data, "(arquivado)")}
 				showSaldos={user.useSaldos}
 				submitLabel="Salvar lançamento"

@@ -1,7 +1,7 @@
 # Couple Finance — spec and current state
 
-> Updated 2026-11-03, after Phase U6 of the new-features track (on top of
-> commit `6409e74`, which is U5). This file is the project's spec **and**
+> Updated 2026-11-03, after Phase U7 of the new-features track and the shared
+> amount added after it (on top of commit `e85232f`, which is U6). This file is the project's spec **and**
 > the summary of where it stands: every convention below is in force, and every
 > decision worth knowing is recorded here with its reason. The plans and
 > implementation logs beside it in `docs/` are history (see "Docs map" at the
@@ -61,7 +61,7 @@ met here: `params` and `searchParams` are Promises, and `middleware.ts` is now
 ```bash
 npm run dev       # next dev, http://localhost:3000
 npm run build     # production build; must pass
-npm test          # vitest run: 154 specs in 5 files
+npm test          # vitest run: 181 specs in 6 files
 npm run lint      # biome check: 0 errors, 5 accepted warnings
 npm run format    # biome format --write
 npx tsc --noEmit  # must be clean
@@ -79,7 +79,7 @@ convenience.
 | **Plan, phases 1–7** | 1: categories decoupled from saldos. 2: app shell, design tokens, `src/lib`, form plumbing. 3: settings CRUD. 4: the monthly ledger. 5: create, edit, duplicate and delete transactions. 6: budgets by saldo and by category. 7: empty and error states, the 404 and the error boundary, dead code and the client `firebase` package removed, lint at zero errors. |
 | **Improvement track, phases A–E** | A–B: `description` on accounts, saldos and categories, in the data layer and then the UI. C: four defects fixed (below). D: Vitest over `src/lib`. E: Next 16.2.9 → 16.4.3 for published advisories, São Paulo time pinned in code, the shared-password gate, the data layer taken off the Server Action list, the Admin credential read from the environment. |
 | **Transfers** (commit `10d130c`) | A third transaction type that moves money between two account+saldo pairs. **Recorded in neither log**: this file is its only documentation. |
-| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done** (`1b6b8e9`): an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. **U4 done**: the real data migrated to the owner (`irizzo`) by a throwaway script, after a backup that is kept until U8. **U5 done**: Perfil (`/settings/profile`) for the name, the saldo mode and a password change that signs out every other session; with saldos off a transaction needs no saldo and no screen shows one. **U6 done**: an expense can be shared with the partner, read-only for them; `listSharedTransactions` is the one cross-owner read. |
+| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done** (`1b6b8e9`): an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. **U4 done**: the real data migrated to the owner (`irizzo`) by a throwaway script, after a backup that is kept until U8. **U5 done** (`6409e74`): Perfil (`/settings/profile`) for the name, the saldo mode and a password change that signs out every other session; with saldos off a transaction needs no saldo and no screen shows one. **U6 done** (`e85232f`): an expense can be shared with the partner, read-only for them; `listSharedTransactions` is the one cross-owner read. **U7 done**: the shared dashboard (`/shared`), with what each person paid, the settlement, and filters by who paid and by a category merged by name. **Shared amount** (added after U7 at the owner's request): a shared expense carries the partner's part (`sharedAmount`), which the dashboard shows first and the settlement nets, so a bill need not be split 50/50. |
 
 Every phase ended with `tsc`, lint and build clean, and from Phase 3 on, every
 phase that changed runtime behaviour was also checked by an end-to-end harness
@@ -98,8 +98,9 @@ on a deleted target vanished from the totals (G4).
 | `/login` | Username and password. Outside the gate, with `/signup`. Shows "Criar conta" while sign-up is available. A signed-in visit redirects to `/`. |
 | `/signup` | Invite code, usuário, nome, senha, confirmar senha and the saldo mode. Shows a closed message instead of the form once two users exist or while `SIGNUP_CODE` is unset. A signed-in visit redirects to `/`. |
 | `/transactions?month=YYYY-MM` | The ledger: summary cards, conta/saldo/categoria filters, the month's lançamentos, and Editar · Duplicar · Excluir on each row. |
-| `/transactions/new` | Create. `?from=<id>` prefills a duplicate. `?month=` sets the way back and the default date. |
-| `/transactions/[id]/edit` | Edit. |
+| `/transactions/new` | Create. `?from=<id>` prefills a duplicate. `?month=` sets the way back and the default date. `?returnTo=shared` sends the way back and the redirect after saving to `/shared`. |
+| `/transactions/[id]/edit` | Edit. Takes `?returnTo=shared` too. |
+| `/shared?month=YYYY-MM&owner=<id>&category=<key>` | The shared dashboard: both people's shared expenses, cards for each person's part (with the total beneath) and the settlement, "Quem pagou" and "Categoria" filters, and Editar · Duplicar · Excluir on the viewer's own rows only. |
 | `/budget?month=YYYY-MM` | The plan by saldo and by category, edited in place, plus "copiar plano" from the previous month. |
 | `/settings` | Redirects to `/settings/accounts`. A shared layout carries Contas · Saldos · Categorias · Perfil tabs; Saldos only while the user has saldos on. |
 | `/settings/{accounts,saldos,categories}` | Create, rename, describe, re-base, archive and restore. `?archived=1` shows archived rows. With saldos off, `/settings/saldos` is a note pointing to Perfil. |
@@ -292,7 +293,8 @@ export.
   owners.** It keeps shared expenses of the viewer and the viewer's stored
   `partnerId` (never anything from a request), and returns the
   `SharedTransaction` projection — `id`, `date`, `description`,
-  `totalAmount`, `categoryName`, `ownerId` — built field by field even for
+  `totalAmount`, `sharedAmount`, `categoryName`, `ownerId` — built field by
+  field even for
   the viewer's own rows, so the account, saldo and real amount cannot leak
   through it. Category names come from each owner's own categories, archived
   included; a missing one is "(removida)". A viewer without an id gets
@@ -300,6 +302,16 @@ export.
   variation of this.
 * **The data layer does not require a partner to share**; the form offers the
   box only when one exists.
+* **The partner's part is `sharedAmount`**, what the partner owes the owner
+  for a shared expense. It is required on a shared expense, between 0 and
+  `totalAmount`, stored only beside `shared: true` (`normalize` drops it with
+  the flag, as a non-transfer drops its destination), and moves no balance.
+  It is deliberately **not** checked against `realAmount`: a bill split with
+  other people too leaves room for their parts. It crosses owners on purpose,
+  because it is what the other person owes. No shared expense existed when it
+  was added, so nothing was backfilled.
+* **The dashboard (`/shared`, since U7) reads nothing but this projection**
+  and `getPartnerName`, so the real amount never reaches it.
 
 ### Users (since Phase U1)
 
@@ -336,7 +348,7 @@ routes, `FormData`, React or sessions.
 
 | Layer | Purpose |
 | --- | --- |
-| `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`), transaction aggregation (`rollup.ts`), session signing (`session.ts`), password hashing (`password.ts`). Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. **The exception is `password.ts`**: it is Node-only (`node:crypto` scrypt) and deliberately slow, so only the users data layer and the auth adapters import it, never the proxy or a client component. Each has a `*.spec.ts` beside it. |
+| `src/lib/*.ts` | Pure helpers — month arithmetic (`month.ts`), currency format and form parsing (`money.ts`), transaction aggregation (`rollup.ts`), the shared dashboard's arithmetic and the `returnTo` allowlist (`shared.ts`), session signing (`session.ts`), password hashing (`password.ts`). Firestore-free, so they can be imported anywhere and cannot live in a `"use server"` module. **The exception is `password.ts`**: it is Node-only (`node:crypto` scrypt) and deliberately slow, so only the users data layer and the auth adapters import it, never the proxy or a client component. Each has a `*.spec.ts` beside it. |
 | `src/app/_actions/*.ts` | Form adapters — with `auth.ts` and `profile.ts`, **the app's only Server Actions**. The data-layer functions take typed objects, but `useActionState` needs `(prevState, formData)`. Each adapter starts with `const user = await requireUser();`, then parses `FormData`, calls the data layer with `user` as the owner, calls `revalidatePath`, and returns a `FormState`. `form-state.ts` (the shared shape) and `session.ts` (`getSessionUser`, `requireUser`, `startSession`, `signUpAvailable`) are deliberately *not* `"use server"`. `auth.ts` signs up, in and out. |
 | `src/proxy.ts` | The optimistic gate in front of every route except `/login` and `/signup`. See AUTH below. |
 | `src/components/*.tsx` | Shared presentation — form primitives, tables, navigation. |
@@ -462,6 +474,35 @@ categories (12); `create`/`update`/`delete` for transactions (3);
 
 Behaviour specific to one screen, decided along the way.
 
+* **The shared dashboard.** The arithmetic is in `src/lib/shared.ts`, and
+  `sharedDashboard` builds the page from one month's rows.
+  * **The cards follow the category filter but never the owner filter.**
+    Filtering to one person would zero the other's card and turn the
+    settlement into nonsense. Only the table narrows, and while the owner
+    filter is on, a caption says so.
+  * **Each figure leads with the shared part**, the total beneath it, as the
+    ledger's cards lead with the real figure. The table's "Compartilhado"
+    column comes before a muted "Total".
+  * **The settlement nets the parts**: the partner's parts of what the viewer
+    paid, against the viewer's parts of what the partner paid. Any split is
+    in the parts themselves, so the card is "Acerto", not 50/50. It covers
+    the month in view (and the category, if one is filtered), and reads
+    "Tudo certo" when the parts cancel out.
+  * **Categories merge by `categoryKey`** (trimmed, lowercased, accents
+    removed), each option labelled in the viewer's own spelling when they
+    have one. A filtered category the month lacks keeps an option, labelled
+    with its key, so the select never reads "Todas" over an empty table.
+  * **Filters from the URL.** `owner` counts only as the viewer's or the
+    partner's id, and a repeated parameter is ignored.
+  * **The partner's rows have no actions.** The viewer's carry
+    `returnTo=shared`, so saving lands on `/shared?month=` of the record.
+  * **Before the partner signs up**, the page only explains itself.
+* **`returnTo` is an allowlist of one value.** Only exactly `"shared"` leads
+  to `/shared`, and anything else, from a URL or a forged form, leads to
+  `/transactions`: `ledgerHref` never uses the value as a path. The new and
+  edit pages use it for their way back ("Voltar ao compartilhado"), and the
+  adapters use it for the redirect.
+
 * **Sharing in the form.** "Compartilhar com {partner}" is a checkbox shown
   only for a despesa (it follows the `type` state) and only once a partner
   exists (`partnerName`, from `getPartnerName`). Its help says what the
@@ -469,6 +510,14 @@ Behaviour specific to one screen, decided along the way.
   copies the flag, and after a refused submit the echo decides (an unchecked
   box is simply absent). The ledger tags a shared row "Compartilhada", filled
   rather than outlined so it never reads as a type badge.
+* **The partner's part in the form.** "Parte de {partner}" is rendered only
+  while the box is checked (a `sharing` state mirrors it, and the box's
+  default follows that state, so the two stay in step across a type switch).
+  It starts at total minus real, and follows both amounts the way real
+  follows the total, until the user types in it. Each time the field
+  appears, an empty one is filled, and a value that is not total minus real
+  counts as chosen and is left alone. An edit whose form sends no part keeps
+  the stored one.
 * **Saldos off ("Só contas").** The Saldos tab is hidden and
   `/settings/saldos` is a note; `TransactionForm` (`showSaldos`) renders no
   saldo selects and its transfer help says the destination must be another
@@ -623,7 +672,8 @@ only inline `biome-ignore` is on `TZ` in the Vitest config, an environment
 variable's name.
 
 `npm test` runs Vitest over `src/**/*.spec.ts`, which today means `src/lib`:
-154 specs (`month` 27, `money` 17, `password` 24, `rollup` 31, `session` 55).
+181 specs (`month` 27, `money` 17, `password` 24, `rollup` 31, `session` 55,
+`shared` 27).
 Specs sit beside the module they cover and need no mocks, since nothing in
 `src/lib` reaches Firestore. `password.spec.ts` takes about 3 s, because scrypt
 is slow on purpose; it shares one hash across specs where it can. `vitest.config.mts` takes the `@/*` alias from tsconfig
@@ -653,7 +703,10 @@ end. The method that works, and the traps it took to find it:
   oracle: it passed on entities never written, because the same words appear in
   page copy. When asserting on text, strip `<script>` blocks first (Next
   serializes every boundary the route *could* render into the flight payload,
-  `not-found` included) and remove React's `<!-- -->` separators.
+  `not-found` included, and the page's search params too, so a URL value the
+  page dropped is still in the response) and remove React's `<!-- -->`
+  separators. The reverse holds for leaks: "the partner never receives this"
+  is checked against the whole response, scripts included.
 * **Use fixtures, never real data.** Create the harness's own entities, write
   in an empty far-future month (2031 was used), refuse to start if it is not
   empty, delete transactions through the delete action so balances unwind, and
@@ -696,10 +749,18 @@ end. The method that works, and the traps it took to find it:
   that import throws. Harnesses live in the session scratchpad, never in the
   repo.
 * **`error.tsx` and anything after hydration need a browser.** Headless Chrome
-  was used once, in Phase E, for the login page, both themes, the two-tab
-  staleness check, a session dropped mid-use, and `error.tsx` via a throwing
-  probe route. Such a probe cannot be kept: a page that throws fails
-  `npm run build`.
+  was used in Phase E for the login page, both themes, the two-tab staleness
+  check, a session dropped mid-use, and `error.tsx` via a throwing probe
+  route. Such a probe cannot be kept: a page that throws fails
+  `npm run build`. It was used again for the shared amount's client-side
+  default, driven over the DevTools protocol with Node 24's own `WebSocket`
+  (no dependency): launch `google-chrome --headless=new
+  --remote-debugging-port=0`, read the port from its stderr, set the session
+  cookie with `Network.setCookie`, and wait for an input to carry
+  `__reactProps…` before touching it, since that is when hydration has
+  happened. Type through the prototype's `value` setter plus an `input`
+  event, or React does not notice. Scope every selector to the form:
+  `button[type="submit"]` alone matches the nav's "Sair" first.
 
 The check that must never go red: the R$ 90 / R$ 45 split bill moves the
 account by −90/−45 and the saldo by −90/−45, and deleting it brings both back
@@ -717,6 +778,8 @@ Raise them with the owner rather than building them unasked.
   with a field error and the typing survives. A `max` would have to track the
   total live, which is not worth the client state.
 * **Undo for a deleted transaction.** Hard delete is the design.
+* **A running settlement across months, or marking one as paid.** The
+  dashboard's settlement covers the month in view only.
 * **A separate budget-create screen or a per-row delete button.** The table is
   the editor, and emptying the field clears the plan.
 * **Firebase Auth, a sign-in rate limit, a post-login `next` redirect.** See
@@ -733,8 +796,8 @@ Raise them with the owner rather than building them unasked.
 
 **All four goals and both planned tracks are complete, and transfers have been
 added since.** A third track, new features (two users, shared expenses, a
-shared dashboard), is under way: U1–U6 of 8 are done, the last being sharing
-an expense with the partner. Every read and write is
+shared dashboard), is under way: U1–U7 of 8 are done, the last being the
+shared dashboard at `/shared`. Every read and write is
 scoped to its user, and the real data belongs to the owner (`irizzo`), who
 sees exactly what they saw before U3. Each person manages their name, saldo
 mode and password in Perfil. **The partner may now sign up** at
