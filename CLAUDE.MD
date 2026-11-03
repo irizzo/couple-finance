@@ -1,7 +1,9 @@
 # Couple Finance — spec and current state
 
-> Updated 2026-11-03, after Phase U7 of the new-features track and the shared
-> amount added after it (on top of commit `e85232f`, which is U6). This file is the project's spec **and**
+> Updated 2026-11-03, after Phase U8, the last of the new-features track, and
+> U8.1, the owner's rule that a shared expense's real amount plus the
+> partner's part may not exceed its total (on top of commit `4a4d8c5`, which
+> is U7 and the shared amount). This file is the project's spec **and**
 > the summary of where it stands: every convention below is in force, and every
 > decision worth knowing is recorded here with its reason. The plans and
 > implementation logs beside it in `docs/` are history (see "Docs map" at the
@@ -61,7 +63,7 @@ met here: `params` and `searchParams` are Promises, and `middleware.ts` is now
 ```bash
 npm run dev       # next dev, http://localhost:3000
 npm run build     # production build; must pass
-npm test          # vitest run: 181 specs in 6 files
+npm test          # vitest run: 186 specs in 6 files
 npm run lint      # biome check: 0 errors, 5 accepted warnings
 npm run format    # biome format --write
 npx tsc --noEmit  # must be clean
@@ -79,7 +81,7 @@ convenience.
 | **Plan, phases 1–7** | 1: categories decoupled from saldos. 2: app shell, design tokens, `src/lib`, form plumbing. 3: settings CRUD. 4: the monthly ledger. 5: create, edit, duplicate and delete transactions. 6: budgets by saldo and by category. 7: empty and error states, the 404 and the error boundary, dead code and the client `firebase` package removed, lint at zero errors. |
 | **Improvement track, phases A–E** | A–B: `description` on accounts, saldos and categories, in the data layer and then the UI. C: four defects fixed (below). D: Vitest over `src/lib`. E: Next 16.2.9 → 16.4.3 for published advisories, São Paulo time pinned in code, the shared-password gate, the data layer taken off the Server Action list, the Admin credential read from the environment. |
 | **Transfers** (commit `10d130c`) | A third transaction type that moves money between two account+saldo pairs. **Recorded in neither log**: this file is its only documentation. |
-| **New features, phases U1–U8** (in progress) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done** (`1b6b8e9`): an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. **U4 done**: the real data migrated to the owner (`irizzo`) by a throwaway script, after a backup that is kept until U8. **U5 done** (`6409e74`): Perfil (`/settings/profile`) for the name, the saldo mode and a password change that signs out every other session; with saldos off a transaction needs no saldo and no screen shows one. **U6 done** (`e85232f`): an expense can be shared with the partner, read-only for them; `listSharedTransactions` is the one cross-owner read. **U7 done**: the shared dashboard (`/shared`), with what each person paid, the settlement, and filters by who paid and by a category merged by name. **Shared amount** (added after U7 at the owner's request): a shared expense carries the partner's part (`sharedAmount`), which the dashboard shows first and the settlement nets, so a bill need not be split 50/50. |
+| **New features, phases U1–U8** (complete) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done** (`1b6b8e9`): an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. **U4 done**: the real data migrated to the owner (`irizzo`) by a throwaway script, after a backup that the owner chose on 2026-11-03 to keep. **U5 done** (`6409e74`): Perfil (`/settings/profile`) for the name, the saldo mode and a password change that signs out every other session; with saldos off a transaction needs no saldo and no screen shows one. **U6 done** (`e85232f`): an expense can be shared with the partner, read-only for them; `listSharedTransactions` is the one cross-owner read. **U7 done** (`4a4d8c5`): the shared dashboard (`/shared`), with what each person paid, the settlement, and filters by who paid and by a category merged by name. **Shared amount** (added after U7 at the owner's request, same commit): a shared expense carries the partner's part (`sharedAmount`), which the dashboard shows first and the settlement nets, so a bill need not be split 50/50. **U8 done**: the full two-user pass in one harness, and the handover docs. Still the owner's: the deploy checklist (see STATUS). **U8.1 done**: on a shared expense, real + part may not exceed the total. |
 
 Every phase ended with `tsc`, lint and build clean, and from Phase 3 on, every
 phase that changed runtime behaviour was also checked by an end-to-end harness
@@ -306,12 +308,30 @@ export.
   for a shared expense. It is required on a shared expense, between 0 and
   `totalAmount`, stored only beside `shared: true` (`normalize` drops it with
   the flag, as a non-transfer drops its destination), and moves no balance.
-  It is deliberately **not** checked against `realAmount`: a bill split with
-  other people too leaves room for their parts. It crosses owners on purpose,
+  **`realAmount + sharedAmount` may not exceed `totalAmount`** (U8.1, the
+  owner's decision): what the owner owes plus what the partner owes is at
+  most the bill, or one of the two figures is wrong and either the budgets
+  or the settlement with it. Less is fine, since a bill split with other
+  people too leaves room for their parts. The sum is compared in whole
+  cents (`exceedsTotal`), because a float sum like 45.10 + 45.20 lands above
+  90.30. It is checked only once each amount fits the total on its own, so a
+  field's own message comes first, and it is reported on both fields, since
+  changing either resolves it. An edit whose form sends no part is checked
+  against the stored one. It crosses owners on purpose,
   because it is what the other person owes. No shared expense existed when it
   was added, so nothing was backfilled.
 * **The dashboard (`/shared`, since U7) reads nothing but this projection**
   and `getPartnerName`, so the real amount never reaches it.
+* **Two layers keep private fields off the dashboard, and each needs its own
+  check** (U8). The projection is built in a `.map((doc): SharedTransaction
+  => …)`, so an extra *literal* property does not compile. And `/shared`
+  renders its rows in Server Components: its one client component,
+  `TransactionRowActions`, receives only the id, the description and the
+  delete action, on the viewer's own rows. So a field spread into the
+  projection still never reaches the browser, and no HTML check can see it.
+  Check the projection itself by calling it, and the page by its response.
+  Keep both layers: a client component given whole rows would put every
+  projected field in the flight payload.
 
 ### Users (since Phase U1)
 
@@ -517,7 +537,10 @@ Behaviour specific to one screen, decided along the way.
   follows the total, until the user types in it. Each time the field
   appears, an empty one is filled, and a value that is not total minus real
   counts as chosen and is left alone. An edit whose form sends no part keeps
-  the stored one.
+  the stored one. The default always fits beside the real amount; a part
+  the user typed may not, after real is raised, and then the server refuses
+  the submit with a message under both fields and the typing kept. There is
+  no client-side guard, for the same reason as for real over total.
 * **Saldos off ("Só contas").** The Saldos tab is hidden and
   `/settings/saldos` is a note; `TransactionForm` (`showSaldos`) renders no
   saldo selects and its transfer help says the destination must be another
@@ -620,7 +643,9 @@ the data that predates it belongs to the owner.
 * **Sign-in never says which part was wrong.** `signInForm` normalizes the
   username, calls `findCredentials`, and verifies an unknown username against a
   dummy hash made once per process (`hashPassword(randomUUID())`, so it always
-  has the current cost), so both failures take one scrypt run. Both return the
+  has the current cost), so both failures take one scrypt run. Measured in
+  U8 in ABBA order, an unknown username took 1.02–1.03× as long as a wrong
+  password. Both return the
   form-level "Usuário ou senha incorretos." and echo only the username. Nothing
   rate-limits sign-in: the 12-character minimum is the defence.
 * **Sign-up needs the invite code** (`SIGNUP_CODE`), compared as HMACs
@@ -672,8 +697,9 @@ only inline `biome-ignore` is on `TZ` in the Vitest config, an environment
 variable's name.
 
 `npm test` runs Vitest over `src/**/*.spec.ts`, which today means `src/lib`:
-181 specs (`month` 27, `money` 17, `password` 24, `rollup` 31, `session` 55,
-`shared` 27).
+186 specs (`month` 27, `money` 22, `password` 24, `rollup` 31, `session` 55,
+`shared` 27). `money.spec.ts` also covers `round2` and `exceedsTotal`, which
+live in the pure `validators.ts`.
 Specs sit beside the module they cover and need no mocks, since nothing in
 `src/lib` reaches Firestore. `password.spec.ts` takes about 3 s, because scrypt
 is slow on purpose; it shares one hash across specs where it can. `vitest.config.mts` takes the `@/*` alias from tsconfig
@@ -741,7 +767,20 @@ end. The method that works, and the traps it took to find it:
   rebuild, and confirm the checks turn red (U3: 38 red with `owned` reduced to
   "exists", 19 with only `checkTargets`' owner test removed). A data-layer
   function the harness imports and calls itself needs no rebuild: only code
-  reached through the server does.
+  reached through the server does. A mutation that `next build` refuses tests
+  nothing, so get it past the type checker without weakening what it
+  breaks: an extra property went in through a spread in U8. A mutation that
+  turns nothing red is a finding, not a pass. In U8 it showed that an HTML
+  check cannot see a projection leak.
+* **A full pass is one harness** (U8): 86 checks numbered after the plan's,
+  over one fixture couple, with one saldos on and one in "Só contas". It
+  costs about one harness run's reads, where rerunning every phase's harness
+  would cost five. One survey pass gives both the fingerprint and the real
+  ids that pages must never carry. The harness and its run script lived in
+  the session scratchpad.
+* **Timing checks interleave in ABBA order.** A fixed order (wrong password,
+  then unknown username, 6 times) swung from 0.87 to 1.35 on noise between
+  runs. In ABBA order it measured 1.02–1.03.
 * **Running a data-layer module outside Next** needs Node 24's type stripping,
   `--experimental-transform-types` for the `TransactionType` enum, and a small
   resolve hook loaded with `--import` that maps `@/` onto `src/`. Since the
@@ -780,6 +819,22 @@ Raise them with the owner rather than building them unasked.
 * **Undo for a deleted transaction.** Hard delete is the design.
 * **A running settlement across months, or marking one as paid.** The
   dashboard's settlement covers the month in view only.
+* **Sharing an income or a transfer, or letting the partner edit a shared
+  expense.** An income has no "paid by", and a transfer between your own
+  accounts is not the partner's business. A shared expense stays its owner's
+  alone (see "Sharing").
+* **The partner's part on the ledger** (decided by the owner, 2026-11-03).
+  The ledger keeps only the "Compartilhada" tag. The part is in the form and
+  on `/shared`, and it usually equals the gap between the Total and Real
+  columns. The ledger lists only your own transactions, so it could show
+  only what the partner owes you, never what you owe them.
+* **Invitations, roles or a partner picker.** The app is for exactly two
+  people: the second to sign up becomes the first's partner, and sign-up
+  closes.
+* **Changing a username, deleting a user, or resetting a password by
+  email.** There is no email. A forgotten password needs a scratchpad script
+  that writes a new hash (`hashPassword`) through the Admin SDK and bumps
+  `sessionVersion`.
 * **A separate budget-create screen or a per-row delete button.** The table is
   the editor, and emptying the field clears the plan.
 * **Firebase Auth, a sign-in rate limit, a post-login `next` redirect.** See
@@ -794,33 +849,50 @@ Raise them with the owner rather than building them unasked.
 
 ## STATUS
 
-**All four goals and both planned tracks are complete, and transfers have been
-added since.** A third track, new features (two users, shared expenses, a
-shared dashboard), is under way: U1–U7 of 8 are done, the last being the
-shared dashboard at `/shared`. Every read and write is
+**All four goals and all three tracks are complete, and transfers have been
+added along the way.** The third track, new features, gave the app two users,
+each with their own data, plus shared expenses and the shared dashboard at
+`/shared`. Every read and write is
 scoped to its user, and the real data belongs to the owner (`irizzo`), who
 sees exactly what they saw before U3. Each person manages their name, saldo
-mode and password in Perfil. **The partner may now sign up** at
-`/signup` with `SIGNUP_CODE`; sign-up then closes. The pre-migration backup is
-kept at `~/couple-finance-backups/firestore-before-u4-2026-11-02.json` until
-U8 is signed off. Every page reports a failed `ActionResult` in a banner
+mode and password in Perfil. **As of 2026-11-03 the partner has not signed
+up**: `users` holds only the owner, with no partner. The pre-migration
+backup is still at
+`~/couple-finance-backups/firestore-before-u4-2026-11-02.json`, kept at the
+owner's choice (2026-11-03). Every page reports a failed `ActionResult` in a banner
 and has a first-run empty state pointing at what must be created first. Each
 person signs in with their own username and password: `/login` and `/signup`
 are the only open pages, every Server Action and data page checks the user
 against Firestore, and "Sair" in the nav signs out.
 
-Everything is verified end to end against real Firestore, including the
-split-bill arithmetic, an overrun against a category target, isolation between
-two users, and (since U3, under a fixture user) a transfer created, edited into
-an expense and deleted with every balance back where it started.
+Everything is verified end to end against real Firestore. U8's full pass,
+with a fixture couple, covered:
+
+* sign-in, the pre-U2 cookie and a password change;
+* isolation between the two people;
+* the split bill, with saldos and in "Só contas";
+* switching saldo mode;
+* sharing, including what the partner's response never contains;
+* the dashboard's arithmetic;
+* the 22-action manifest;
+* a transfer created, edited into an expense and deleted, with every balance
+  back where it started.
 
 ### Still open
 
-**A deploy** is no longer blocked by the data (U4 has run); the plan's
-deploy checklist is in U8. It will need `AUTH_SECRET` and
-`FIREBASE_SERVICE_ACCOUNT` set, `SIGNUP_CODE` only while someone still has to
-sign up, and HTTPS, since the cookie is `Secure` in production. What remains is
-known and accepted:
+**The deploy checklist**, which is the owner's to run:
+
+1. **Deploy.** Nothing in the data blocks it: U4 has run, and there is one
+   database. The host needs `AUTH_SECRET`, `FIREBASE_SERVICE_ACCOUNT` and
+   HTTPS, since the cookie is `Secure` in production.
+2. **Set `SIGNUP_CODE`.**
+3. **The partner signs up** at `/signup`. Sign-up then closes.
+4. **Remove `SIGNUP_CODE`.**
+
+The partner can just as well sign up on the local app before the deploy,
+since it is the same database.
+
+What else remains is known and accepted:
 
 * **Sign-in has no rate limit**, and a copied session cookie outlives "Sair"
   until it expires or the user's `sessionVersion` changes (see AUTH).
@@ -830,6 +902,8 @@ known and accepted:
 * **The client-side `useActionState` path of `/login`, `/signup` and Perfil was
   not browser-tested** (U2, U5). The harness posts forms without JavaScript,
   which runs the same actions and renders the same `FormState`.
+  `TransactionForm`'s client behaviour was browser-tested in U7.1: the share
+  box, the part's default and a submit through `useActionState`.
 * **The proxy's answer to a Server Action fetch relies on `x-action-redirect`**,
   which Next uses internally rather than documents. Re-check it on Next
   upgrades: with the cookie deleted, submitting a form should land on `/login`,

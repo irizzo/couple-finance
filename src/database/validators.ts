@@ -176,4 +176,13 @@ export function round2(value: number): number {
 	return Math.round(value * CENTS_PER_UNIT) / CENTS_PER_UNIT;
 }
 
+/**
+ * Whether the parts add up to more than the total, counted in whole cents:
+ * money is stored to the cent, and in floats `0.1 + 0.2 > 0.3` is true.
+ */
+export function exceedsTotal(total: number, ...parts: number[]): boolean {
+	const cents = (value: number) => Math.round(value * CENTS_PER_UNIT);
+	return parts.reduce((sum, part) => sum + cents(part), 0) > cents(total);
+}
+
 export type { FieldErrors };

@@ -21,6 +21,9 @@ account, split 50/50, is stored as R$ 90 total and R$ 45 real.
   where the money sits), a **saldo** (a broad bucket such as "Essenciais") and
   a **category** (a specific kind of spending such as "Moradia" or "Mercado").
   Saldos and categories are independent: any category can go with any saldo.
+- **Saldos are optional.** Each person chooses "Contas e saldos" or "Só
+  contas" at sign-up, and can switch later. With "Só contas", no screen asks
+  for a saldo or shows one. Switching deletes nothing.
 - **Transfers** move money between two accounts, between two saldos, or both.
   They are not counted as income or spending.
 - **Duplication.** "Duplicar" opens a prefilled form for a recurring expense.
@@ -30,16 +33,34 @@ account, split 50/50, is stored as R$ 90 total and R$ 45 real.
   amounts with a progress bar. One button copies last month's plan.
 - **Archive instead of delete.** Accounts, saldos and categories can be
   archived and restored. Past transactions keep pointing at them.
-- **A login for each person.** Each of the two people signs up with a
-  username and their own password. Sign-up needs an invite code and closes
-  once two accounts exist.
+- **A login for each person, and each person's own data.** Each of the two
+  people signs up with a username and their own password. Sign-up needs an
+  invite code and closes once two accounts exist. Accounts, saldos,
+  categories, transactions and budgets belong to whoever created them, and
+  the other person can neither see nor change them.
+- **Shared expenses.** Tick "Compartilhar com …" on an expense and set the
+  other person's part: what they owe you for it. It starts at total minus
+  real, and your real amount plus their part can't be more than the total.
+  The other person sees the description, date, total, their part,
+  category and who paid. They never see your account, your saldo or your real
+  amount, and only you can edit or delete the expense.
+- **Shared dashboard** (Compartilhado). Both people's shared expenses for a
+  month, what each paid, and who owes whom. The table can be filtered by who
+  paid and by category, and categories with the same name are merged. The
+  cards always count both people.
+- **Profile** (Perfil). Change your name, your saldo mode and your password.
+  Changing the password signs out your other sessions.
 
 ## How balances work
 
 Accounts and saldos each keep two stored balances, one for total amounts and
-one for real amounts. Every transaction updates both balances on both its
-account and its saldo. Expenses subtract and income adds. The R$ 90 / R$ 45
+one for real amounts. Every transaction updates both balances on its account,
+and on its saldo when it has one. Expenses subtract and income adds. The R$ 90 / R$ 45
 bill takes an account that started at R$ 1.000 to 910 (total) and 955 (real).
+
+A shared expense moves only the payer's balances. The other person's part
+moves no balance. It only feeds the dashboard's settlement, which nets what
+each person owes the other for the month in view.
 
 Budgets compare the plan against **real** expense amounts only. Income never
 offsets a budget, and a transfer is not spending. The saldo and category
@@ -90,11 +111,14 @@ You need Node.js 24 and a Firebase project with a Firestore database.
    npm run dev
    ```
 
-   Open <http://localhost:3000/signup>, enter the invite code and create your
-   account. Passwords need at least 12 characters.
+   Open <http://localhost:3000/signup>, enter the invite code, and choose a
+   username, a name, a password and a saldo mode. Passwords need at least 12
+   characters. The second person signs up the same way and becomes the
+   first person's partner. Sign-up then closes.
 
 5. Before entering transactions, go to **Configurações** and create at least
-   one account, one saldo and one category.
+   one account and one category, plus one saldo if you chose "Contas e
+   saldos".
 
 The app reads and writes whichever Firestore database the credential belongs
 to, so local development uses real data unless you point it at a separate
@@ -115,7 +139,7 @@ Firebase project.
 
 ```text
 src/
-  app/            Routes: /transactions, /budget, /settings, /login, /signup
+  app/            Routes: /transactions, /shared, /budget, /settings, /login, /signup
     _actions/     Server Actions. Each checks the session, then calls the data layer
   components/     Shared UI: forms, tables, navigation
   database/       Firestore access (server-only), validation, Admin SDK setup
@@ -138,10 +162,22 @@ Serve the app over HTTPS: in production the session cookie is marked `Secure`.
 No time zone setting is needed, because the app reads dates in
 `America/Sao_Paulo` regardless of the server's zone.
 
+The order, when one person has signed up and the other has not:
+
+1. Deploy with `AUTH_SECRET` and `FIREBASE_SERVICE_ACCOUNT`.
+2. Set `SIGNUP_CODE`.
+3. The second person signs up at `/signup`.
+4. Remove `SIGNUP_CODE`.
+
 ## Security notes
 
 - Sessions are signed cookies that last 30 days. Changing `AUTH_SECRET` signs
-  everyone out.
+  everyone out, and changing your password signs out your other sessions.
+- Every read and write is checked on the server against the signed-in
+  person. Someone else's record reads exactly like a missing one.
+- The shared dashboard receives only the shared fields listed above. A
+  shared expense's account, saldo and real amount never leave the server for
+  the other person.
 - Sign-in attempts are not rate-limited, so passwords need at least 12
   characters. A wrong password and an unknown username get the same message.
 - Passwords are stored as scrypt hashes, never in plain text.

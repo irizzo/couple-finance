@@ -13,6 +13,7 @@ import { type ActionResult, fail, failFrom, ok } from "@/database/result";
 import {
 	collect,
 	enumValue,
+	exceedsTotal,
 	type FieldErrors,
 	isoDate,
 	nonEmptyString,
@@ -219,6 +220,22 @@ function validate(
 		nonNegativeNumber(input?.totalAmount) === null &&
 		nonNegativeNumber(input?.realAmount) === null;
 	const totalIsNumber = nonNegativeNumber(input?.totalAmount) === null;
+	// On a shared expense, the owner's share plus the partner's part may not
+	// add up to more than the bill (owner's decision, 2026-11-03). Less is fine:
+	// a bill split with other people too leaves room for their parts. Checked
+	// only once each fits the total on its own, so a field's own message comes
+	// first, and reported on both fields, since changing either resolves it.
+	const shareOverflows =
+		storesShare(input) &&
+		amountsAreNumbers &&
+		nonNegativeNumber(input.sharedAmount) === null &&
+		input.realAmount <= input.totalAmount &&
+		(input.sharedAmount as number) <= input.totalAmount &&
+		exceedsTotal(
+			input.totalAmount,
+			input.realAmount,
+			input.sharedAmount as number,
+		);
 	return collect({
 		date: isoDate(input?.date),
 		description: nonEmptyString(input?.description),
@@ -233,19 +250,24 @@ function validate(
 			nonNegativeNumber(input?.realAmount) ??
 			(amountsAreNumbers && input.realAmount > input.totalAmount
 				? "cannot be greater than the total amount"
+				: null) ??
+			(shareOverflows
+				? "plus the shared amount cannot be greater than the total amount"
 				: null),
 		...(input?.type === TransactionType.TRANSFER
 			? validateDestination(input, useSaldos)
 			: {}),
 		// Only checked where it is stored. Like `realAmount`, it may not exceed
-		// the total, but it is not checked against `realAmount`: a bill split with
-		// other people too leaves room for their parts.
+		// the total, alone or together with `realAmount` (see `shareOverflows`).
 		...(storesShare(input)
 			? {
 					sharedAmount:
 						nonNegativeNumber(input.sharedAmount) ??
 						(totalIsNumber && (input.sharedAmount as number) > input.totalAmount
 							? "cannot be greater than the total amount"
+							: null) ??
+						(shareOverflows
+							? "plus the real amount cannot be greater than the total amount"
 							: null),
 				}
 			: {}),

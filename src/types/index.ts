@@ -40,10 +40,11 @@ export interface Transaction {
 	shared: boolean;
 	/**
 	 * Shared expenses only: the partner's part, what they owe the owner for this
-	 * expense. Between 0 and `totalAmount`, and stored only while `shared` is
-	 * true, so `undefined` is a real state. It is not derived from `realAmount`:
-	 * a bill may be split with other people too. It moves no balance; only the
-	 * shared dashboard's settlement reads it.
+	 * expense. Between 0 and `totalAmount`, with `realAmount + sharedAmount` at
+	 * most `totalAmount`, and stored only while `shared` is true, so `undefined`
+	 * is a real state. It is not derived from `realAmount`: a bill may be split
+	 * with other people too. It moves no balance; only the shared dashboard's
+	 * settlement reads it.
 	 */
 	sharedAmount?: number;
 }
