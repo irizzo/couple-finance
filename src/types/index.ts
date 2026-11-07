@@ -47,23 +47,48 @@ export interface Transaction {
 	 * settlement reads it.
 	 */
 	sharedAmount?: number;
+	/**
+	 * Expenses only: a payment to the partner toward the acerto, recorded by
+	 * whoever paid (owner's decision, 2026-11-06). Never together with `shared`.
+	 * Stored only when true, so `undefined` is a real state, not a missing
+	 * backfill. It moves balances like any expense; the shared dashboard nets
+	 * its whole `totalAmount` into the acerto of `settlesMonth`.
+	 */
+	settlement?: true;
+	/**
+	 * The acerto a payment counts toward, as "YYYY-MM". Stored only beside
+	 * `settlement`. It may differ from `date`'s month: a PIX on 05/04 can settle
+	 * March.
+	 */
+	settlesMonth?: string;
 }
 
+/** A shared expense, or a payment toward the acerto. */
+export type SharedKind = "expense" | "payment";
+
 /**
- * A shared expense as either person may see it: these seven fields and nothing
- * else, even on the viewer's own rows. Never the account, the saldo or the
- * real amount, which stay private to the owner.
+ * A shared expense or a payment as either person may see it: these eight
+ * fields and nothing else, even on the viewer's own rows. Never the account,
+ * the saldo or the real amount, which stay private to the owner.
  */
 export interface SharedTransaction {
 	id: string;
 	date: string;
 	description: string;
 	totalAmount: number;
-	/** The part of whoever did not pay: what they owe the owner. */
+	/**
+	 * What counts toward the acerto. On an expense, the part of whoever did not
+	 * pay: what they owe the owner. On a payment, the whole `totalAmount`.
+	 */
 	sharedAmount: number;
-	/** Resolved from the owner's categories; "(removida)" when gone. */
+	/**
+	 * Resolved from the owner's categories; "(removida)" when gone. Empty on a
+	 * payment, which is not "for" a category: the partner never learns the one
+	 * the payer filed it under.
+	 */
 	categoryName: string;
 	ownerId: string;
+	kind: SharedKind;
 }
 
 /**
@@ -191,12 +216,13 @@ export type UpdateCategoryInput = Partial<
 
 /**
  * `shared` is optional: absent means not shared. `sharedAmount` is required
- * only on a shared expense, and dropped from anything else.
+ * only on a shared expense, and dropped from anything else. `settlement` is
+ * likewise optional, and `settlesMonth` required only on a payment.
  */
 export type CreateTransactionInput = Omit<
 	Transaction,
-	"id" | "ownerId" | "shared"
-> & { shared?: boolean };
+	"id" | "ownerId" | "shared" | "settlement"
+> & { shared?: boolean; settlement?: boolean };
 export type UpdateTransactionInput = Partial<CreateTransactionInput>;
 
 /** What Perfil may change. The username is immutable. */

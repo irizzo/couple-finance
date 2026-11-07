@@ -8,7 +8,7 @@ import {
 	updateTransaction,
 } from "@/database/transactions.actions";
 import { parseAmount } from "@/lib/money";
-import { ledgerHref } from "@/lib/shared";
+import { recordHref } from "@/lib/shared";
 import type { CreateTransactionInput, TransactionType } from "@/types";
 import {
 	type FormState,
@@ -31,8 +31,6 @@ import { requireUser } from "./session";
  * the one allowed, so the field cannot point the redirect anywhere else.
  */
 
-const MONTH_LENGTH = 7; // "YYYY-MM" out of an ISO "YYYY-MM-DD"
-
 function readInput(formData: FormData): CreateTransactionInput {
 	return {
 		date: textField(formData, "date"),
@@ -50,14 +48,19 @@ function readInput(formData: FormData): CreateTransactionInput {
 		// drops them from anything else.
 		toAccountId: textField(formData, "toAccountId"),
 		toSaldoId: presentField(formData, "toSaldoId"),
-		// An unchecked box is not submitted at all, so absent means "not
-		// shared"; the data layer also refuses to share anything but an expense.
-		shared: textField(formData, "shared") === "on",
-		// Rendered only while the box is checked. Absent, an edit keeps the
+		// One radio group, `sharing`: "none", "shared" or "payment". Rendered
+		// only for a despesa with a partner, so absent means neither, and the
+		// data layer also refuses either flag on anything but an expense. One
+		// value can never set both.
+		shared: textField(formData, "sharing") === "shared",
+		settlement: textField(formData, "sharing") === "payment",
+		// Rendered only while "shared" is picked. Absent, an edit keeps the
 		// stored part; the data layer requires one only on a shared expense.
 		sharedAmount: formData.has("sharedAmount")
 			? parseAmount(formData.get("sharedAmount"))
 			: undefined,
+		// Rendered only while "payment" is picked; absent keeps the stored one.
+		settlesMonth: presentField(formData, "settlesMonth"),
 	};
 }
 
@@ -72,13 +75,9 @@ export async function createTransactionForm(
 	}
 	revalidatePath("/", "layout");
 	// Land on the month the transaction belongs to, not the month the form was
-	// opened from — they differ whenever you backdate or duplicate forward.
-	redirect(
-		ledgerHref(
-			result.data.date.slice(0, MONTH_LENGTH),
-			textField(formData, "returnTo"),
-		),
-	);
+	// opened from — they differ whenever you backdate or duplicate forward, and
+	// on the dashboard a payment belongs to the acerto it settles.
+	redirect(recordHref(result.data, textField(formData, "returnTo")));
 }
 
 export async function updateTransactionForm(
@@ -95,12 +94,7 @@ export async function updateTransactionForm(
 		return fromResult(result, formValues(formData));
 	}
 	revalidatePath("/", "layout");
-	redirect(
-		ledgerHref(
-			result.data.date.slice(0, MONTH_LENGTH),
-			textField(formData, "returnTo"),
-		),
-	);
+	redirect(recordHref(result.data, textField(formData, "returnTo")));
 }
 
 /**

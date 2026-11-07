@@ -122,23 +122,20 @@
 	gap: var(--space-1);
 }
 
-.shareLabel {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-weight: 500;
-	cursor: pointer;
-}
-
-.shareLabel input {
-	width: auto;
-	accent-color: var(--accent);
-}
-
 /* The partner's part: a width, not `.narrow`'s flex-basis, which in this
    column would become a height. */
 .shareAmount {
 	max-width: 11rem;
+}
+
+/* Wide enough for "Fevereiro de 2026". */
+.settleMonth {
+	max-width: 15rem;
+}
+
+/* The sharing radios carry the partner's name, so they may need two lines. */
+.wrap {
+	flex-wrap: wrap;
 }
 
 .shareHelp {

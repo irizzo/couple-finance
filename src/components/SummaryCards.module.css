@@ -38,3 +38,9 @@
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 }
+
+/* "Registrar pagamento", under the settlement. */
+.cardAction {
+	align-self: flex-start;
+	margin-top: var(--space-2);
+}

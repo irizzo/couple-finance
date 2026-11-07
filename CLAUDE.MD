@@ -1,9 +1,10 @@
 # Couple Finance — spec and current state
 
-> Updated 2026-11-03, after Phase U8, the last of the new-features track, and
-> U8.1, the owner's rule that a shared expense's real amount plus the
-> partner's part may not exceed its total (on top of commit `4a4d8c5`, which
-> is U7 and the shared amount). This file is the project's spec **and**
+> Updated 2026-11-06, after U9, payments toward the acerto: the payer marks
+> a despesa as a payment to the partner, and it nets into the acerto of the
+> month it says it settles. Before that: U8, the last of the new-features
+> track, and U8.1, the owner's rule that a shared expense's real amount plus
+> the partner's part may not exceed its total. This file is the project's spec **and**
 > the summary of where it stands: every convention below is in force, and every
 > decision worth knowing is recorded here with its reason. The plans and
 > implementation logs beside it in `docs/` are history (see "Docs map" at the
@@ -63,7 +64,7 @@ met here: `params` and `searchParams` are Promises, and `middleware.ts` is now
 ```bash
 npm run dev       # next dev, http://localhost:3000
 npm run build     # production build; must pass
-npm test          # vitest run: 186 specs in 6 files
+npm test          # vitest run: 213 specs in 6 files
 npm run lint      # biome check: 0 errors, 5 accepted warnings
 npm run format    # biome format --write
 npx tsc --noEmit  # must be clean
@@ -81,7 +82,7 @@ convenience.
 | **Plan, phases 1–7** | 1: categories decoupled from saldos. 2: app shell, design tokens, `src/lib`, form plumbing. 3: settings CRUD. 4: the monthly ledger. 5: create, edit, duplicate and delete transactions. 6: budgets by saldo and by category. 7: empty and error states, the 404 and the error boundary, dead code and the client `firebase` package removed, lint at zero errors. |
 | **Improvement track, phases A–E** | A–B: `description` on accounts, saldos and categories, in the data layer and then the UI. C: four defects fixed (below). D: Vitest over `src/lib`. E: Next 16.2.9 → 16.4.3 for published advisories, São Paulo time pinned in code, the shared-password gate, the data layer taken off the Server Action list, the Admin credential read from the environment. |
 | **Transfers** (commit `10d130c`) | A third transaction type that moves money between two account+saldo pairs. **Recorded in neither log**: this file is its only documentation. |
-| **New features, phases U1–U8** (complete) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done** (`1b6b8e9`): an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. **U4 done**: the real data migrated to the owner (`irizzo`) by a throwaway script, after a backup that the owner chose on 2026-11-03 to keep. **U5 done** (`6409e74`): Perfil (`/settings/profile`) for the name, the saldo mode and a password change that signs out every other session; with saldos off a transaction needs no saldo and no screen shows one. **U6 done** (`e85232f`): an expense can be shared with the partner, read-only for them; `listSharedTransactions` is the one cross-owner read. **U7 done** (`4a4d8c5`): the shared dashboard (`/shared`), with what each person paid, the settlement, and filters by who paid and by a category merged by name. **Shared amount** (added after U7 at the owner's request, same commit): a shared expense carries the partner's part (`sharedAmount`), which the dashboard shows first and the settlement nets, so a bill need not be split 50/50. **U8 done**: the full two-user pass in one harness, and the handover docs. Still the owner's: the deploy checklist (see STATUS). **U8.1 done**: on a shared expense, real + part may not exceed the total. |
+| **New features, phases U1–U8** (complete) | Two users, each with their own login and data, shared expenses and a shared dashboard; see `NEW_FEATURES.MD`. **U1 done** (`49ac92f`): the `users` collection, scrypt password hashing (`src/lib/password.ts`) and `src/database/users.actions.ts`. **U2 done** (`8360945`): per-user sign-up (`/signup`, invite code) and sign-in, a session that names its user, `requireUser` in every adapter and data page; the shared password is gone. **U3 done** (`1b6b8e9`): an `ownerId` on every document and the owner as the first argument of every data-layer function; someone else's document reads as not found. **U4 done**: the real data migrated to the owner (`irizzo`) by a throwaway script, after a backup that the owner chose on 2026-11-03 to keep. **U5 done** (`6409e74`): Perfil (`/settings/profile`) for the name, the saldo mode and a password change that signs out every other session; with saldos off a transaction needs no saldo and no screen shows one. **U6 done** (`e85232f`): an expense can be shared with the partner, read-only for them; `listSharedTransactions` is the one cross-owner read. **U7 done** (`4a4d8c5`): the shared dashboard (`/shared`), with what each person paid, the settlement, and filters by who paid and by a category merged by name. **Shared amount** (added after U7 at the owner's request, same commit): a shared expense carries the partner's part (`sharedAmount`), which the dashboard shows first and the settlement nets, so a bill need not be split 50/50. **U8 done**: the full two-user pass in one harness, and the handover docs. Still the owner's: the deploy checklist (see STATUS). **U8.1 done**: on a shared expense, real + part may not exceed the total. **U9 done** (2026-11-06, owner's request): payments toward the acerto (see "Sharing"). Specs, lint, `tsc` and build are clean. **The end-to-end harness was written but not run** (see STATUS). |
 
 Every phase ended with `tsc`, lint and build clean, and from Phase 3 on, every
 phase that changed runtime behaviour was also checked by an end-to-end harness
@@ -100,9 +101,9 @@ on a deleted target vanished from the totals (G4).
 | `/login` | Username and password. Outside the gate, with `/signup`. Shows "Criar conta" while sign-up is available. A signed-in visit redirects to `/`. |
 | `/signup` | Invite code, usuário, nome, senha, confirmar senha and the saldo mode. Shows a closed message instead of the form once two users exist or while `SIGNUP_CODE` is unset. A signed-in visit redirects to `/`. |
 | `/transactions?month=YYYY-MM` | The ledger: summary cards, conta/saldo/categoria filters, the month's lançamentos, and Editar · Duplicar · Excluir on each row. |
-| `/transactions/new` | Create. `?from=<id>` prefills a duplicate. `?month=` sets the way back and the default date. `?returnTo=shared` sends the way back and the redirect after saving to `/shared`. |
+| `/transactions/new` | Create. `?from=<id>` prefills a duplicate. `?month=` sets the way back and the default date. `?returnTo=shared` sends the way back and the redirect after saving to `/shared`. `?settles=YYYY-MM&amount=X` (the Acerto card's "Registrar pagamento") opens it as a payment toward that month's acerto, dated today, with total and real at X. It needs a partner, and `from` wins over it. |
 | `/transactions/[id]/edit` | Edit. Takes `?returnTo=shared` too. |
-| `/shared?month=YYYY-MM&owner=<id>&category=<key>` | The shared dashboard: both people's shared expenses, cards for each person's part (with the total beneath) and the settlement, "Quem pagou" and "Categoria" filters, and Editar · Duplicar · Excluir on the viewer's own rows only. |
+| `/shared?month=YYYY-MM&owner=<id>&category=<key>` | The shared dashboard: both people's shared expenses and payments toward the month's acerto, cards for each person's part (with the total beneath) and the settlement after payments, "Quem pagou" and "Categoria" filters, and Editar · Duplicar · Excluir on the viewer's own rows only. |
 | `/budget?month=YYYY-MM` | The plan by saldo and by category, edited in place, plus "copiar plano" from the previous month. |
 | `/settings` | Redirects to `/settings/accounts`. A shared layout carries Contas · Saldos · Categorias · Perfil tabs; Saldos only while the user has saldos on. |
 | `/settings/{accounts,saldos,categories}` | Create, rename, describe, re-base, archive and restore. `?archived=1` shows archived rows. With saldos off, `/settings/saldos` is a note pointing to Perfil. |
@@ -291,17 +292,18 @@ export.
 * **A shared expense is still the owner's alone.** It moves only the owner's
   balances, and every by-id access stays `owned`, so the partner can neither
   edit, duplicate, delete nor unshare it.
-* **`listSharedTransactions(viewer, {from, to})` is the only read that crosses
-  owners.** It keeps shared expenses of the viewer and the viewer's stored
-  `partnerId` (never anything from a request), and returns the
-  `SharedTransaction` projection — `id`, `date`, `description`,
-  `totalAmount`, `sharedAmount`, `categoryName`, `ownerId` — built field by
-  field even for
+* **`listSharedTransactions(viewer, month)` is the only read that crosses
+  owners.** It keeps shared expenses and payments of the viewer and the
+  viewer's stored `partnerId` (never anything from a request), and returns
+  the `SharedTransaction` projection — `id`, `date`, `description`,
+  `totalAmount`, `sharedAmount`, `categoryName`, `ownerId`, `kind` — built
+  field by field even for
   the viewer's own rows, so the account, saldo and real amount cannot leak
   through it. Category names come from each owner's own categories, archived
   included; a missing one is "(removida)". A viewer without an id gets
-  nothing. Anything else that crosses owners is a new decision, not a
-  variation of this.
+  nothing. It runs two single-field queries (U9): the month's `date` range
+  for shared expenses, and `settlesMonth ==` for payments. Anything else that
+  crosses owners is a new decision, not a variation of this.
 * **The data layer does not require a partner to share**; the form offers the
   box only when one exists.
 * **The partner's part is `sharedAmount`**, what the partner owes the owner
@@ -320,6 +322,29 @@ export.
   against the stored one. It crosses owners on purpose,
   because it is what the other person owes. No shared expense existed when it
   was added, so nothing was backfilled.
+* **A payment toward the acerto** (U9, the owner's decisions of 2026-11-06)
+  is a despesa marked `settlement: true`, with the month it settles in
+  `settlesMonth`. A PIX on 05/04 can settle March.
+  * **Only the payer records it.** The receiver may log a plain receita
+    (real 0) to correct their account, and it does not touch the acerto.
+    Letting both sides record it would count it twice.
+  * **It is a normal despesa** for the payer. It moves both balances, and
+    real starts equal to the total, since it is the payer's share of bills
+    the partner paid. It counts in Despesas, Resultado and its category's
+    budget.
+  * **Both fields are optional and stored only when used**, like
+    `sharedAmount`: on an expense, never beside `shared: true`. `validate`
+    refuses both flags at once (field error on `settlement`), and requires
+    `settlesMonth` (`isoMonth`) on a payment. `normalize` drops both from
+    any other type or mode. No document predates them, so nothing was
+    backfilled.
+  * **It counts toward its `settlesMonth` only, never by its date.** The
+    projection gives it `kind: "payment"`, `sharedAmount` equal to its
+    `totalAmount` (all of it counts), and an empty `categoryName`: a
+    payment is not "for" a category, and the partner never learns the one it
+    was filed under.
+  * **Still not built: a running acerto across months.** Each month's acerto
+    stands alone, and a payment names the one it settles.
 * **The dashboard (`/shared`, since U7) reads nothing but this projection**
   and `getPartnerName`, so the real amount never reaches it.
 * **Two layers keep private fields off the dashboard, and each needs its own
@@ -508,6 +533,25 @@ Behaviour specific to one screen, decided along the way.
     in the parts themselves, so the card is "Acerto", not 50/50. It covers
     the month in view (and the category, if one is filtered), and reads
     "Tudo certo" when the parts cancel out.
+  * **Then it nets the payments** toward the month (U9): what the viewer
+    sent reduces what the viewer owes, and what the partner sent reduces
+    what the partner owes. An overpayment turns the settlement around.
+    `sharedSummary` returns `payments` and `beforePayments` beside
+    `settlement`. When there are payments, the card adds "Antes dos
+    pagamentos, você devia R$ X a …. Pagamentos: você R$ Y." While the
+    viewer owes something, it offers "Registrar pagamento", a plain link
+    (`paymentHref`) to the prefilled create form. Payments are not
+    expenses: they are left out of the totals, the count and the category
+    options.
+  * **A category filter leaves payments out** of the cards and the table,
+    since netting a whole payment against one category's parts would be
+    nonsense. A caption says so (`paymentsHidden`), and the card offers no
+    "Registrar pagamento", since one category's acerto is not what anyone
+    pays.
+  * **The table shows a payment** with a "Pagamento" tag in the Categoria
+    column and its own date, which may fall after the month. When the
+    partner has paid, a line tells the viewer it already counts, and how to
+    record the money received (a receita with real 0).
   * **Categories merge by `categoryKey`** (trimmed, lowercased, accents
     removed), each option labelled in the viewer's own spelling when they
     have one. A filtered category the month lacks keeps an option, labelled
@@ -522,17 +566,34 @@ Behaviour specific to one screen, decided along the way.
   `/transactions`: `ledgerHref` never uses the value as a path. The new and
   edit pages use it for their way back ("Voltar ao compartilhado"), and the
   adapters use it for the redirect.
+* **On the dashboard, a payment lives in the month it settles.**
+  `recordHref` is the one rule for the redirect after saving and the edit
+  page's way back: the month of the record's date, except that with
+  `returnTo=shared` a payment lands on `/shared?month=<settlesMonth>`. From
+  the ledger, it lands on the month of its date.
 
-* **Sharing in the form.** "Compartilhar com {partner}" is a checkbox shown
-  only for a despesa (it follows the `type` state) and only once a partner
-  exists (`partnerName`, from `getPartnerName`). Its help says what the
-  partner sees and does not. Edit starts checked when shared, a duplicate
-  copies the flag, and after a refused submit the echo decides (an unchecked
-  box is simply absent). The ledger tags a shared row "Compartilhada", filled
-  rather than outlined so it never reads as a type badge.
+* **Sharing in the form.** A "Compartilhamento" radio group named `sharing`
+  ("Só minha" · "Dividir com {partner}" · "Pagamento a {partner}", U9;
+  before, a "Compartilhar" checkbox) is shown only for a despesa (it follows
+  the `type` state) and only once a partner exists (`partnerName`, from
+  `getPartnerName`). The adapter maps it to `shared` and `settlement`, so
+  one value can never set both. The help under it, per mode, says what the
+  partner sees and does not. Edit starts on the stored mode, a duplicate
+  copies it (with the month), and after a refused submit the echo decides
+  (radios that were not rendered are simply absent). The ledger tags a
+  shared row "Compartilhada" and a payment "Acerto", filled rather than
+  outlined so neither reads as a type badge.
+* **The payment's month in the form.** "Referente a" is a `<select>`,
+  rendered only in payment mode: twelve months back to one ahead of today
+  (`settleMonthOptions`, from `monthChoices`), plus the stored value when it
+  falls outside. It is a select rather than `<input type="month">`, which
+  desktop Safari and Firefox render as plain text. It starts empty and is
+  required, except when prefilled by the Acerto card, an edit or a
+  duplicate.
 * **The partner's part in the form.** "Parte de {partner}" is rendered only
-  while the box is checked (a `sharing` state mirrors it, and the box's
-  default follows that state, so the two stay in step across a type switch).
+  while "Dividir" is picked (a `sharing` state mirrors the radios, and each
+  radio's default follows that state, so they stay in step across a type
+  switch).
   It starts at total minus real, and follows both amounts the way real
   follows the total, until the user types in it. Each time the field
   appears, an empty one is filled, and a value that is not total minus real
@@ -697,8 +758,8 @@ only inline `biome-ignore` is on `TZ` in the Vitest config, an environment
 variable's name.
 
 `npm test` runs Vitest over `src/**/*.spec.ts`, which today means `src/lib`:
-186 specs (`month` 27, `money` 22, `password` 24, `rollup` 31, `session` 55,
-`shared` 27). `money.spec.ts` also covers `round2` and `exceedsTotal`, which
+213 specs (`month` 33, `money` 22, `password` 24, `rollup` 31, `session` 55,
+`shared` 48). `money.spec.ts` also covers `round2` and `exceedsTotal`, which
 live in the pure `validators.ts`.
 Specs sit beside the module they cover and need no mocks, since nothing in
 `src/lib` reaches Firestore. `password.spec.ts` takes about 3 s, because scrypt
@@ -817,8 +878,9 @@ Raise them with the owner rather than building them unasked.
   with a field error and the typing survives. A `max` would have to track the
   total live, which is not worth the client state.
 * **Undo for a deleted transaction.** Hard delete is the design.
-* **A running settlement across months, or marking one as paid.** The
-  dashboard's settlement covers the month in view only.
+* **A running settlement across months.** The dashboard's settlement
+  covers the month in view only. Recording a payment toward one month's
+  acerto was built in U9, at the owner's request (2026-11-06).
 * **Sharing an income or a transfer, or letting the partner edit a shared
   expense.** An income has no "paid by", and a transfer between your own
   accounts is not the partner's business. A shared expense stays its owner's
@@ -855,8 +917,9 @@ each with their own data, plus shared expenses and the shared dashboard at
 `/shared`. Every read and write is
 scoped to its user, and the real data belongs to the owner (`irizzo`), who
 sees exactly what they saw before U3. Each person manages their name, saldo
-mode and password in Perfil. **As of 2026-11-03 the partner has not signed
-up**: `users` holds only the owner, with no partner. The pre-migration
+mode and password in Perfil. **The partner has signed up**: a read-only
+count on 2026-11-06 found two users (on 2026-11-03 there was only the
+owner). The pre-migration
 backup is still at
 `~/couple-finance-backups/firestore-before-u4-2026-11-02.json`, kept at the
 owner's choice (2026-11-03). Every page reports a failed `ActionResult` in a banner
@@ -880,7 +943,19 @@ with a fixture couple, covered:
 
 ### Still open
 
-**The deploy checklist**, which is the owner's to run:
+**U9's end-to-end harness has not been run.** It was written to the session
+scratchpad (`pay/harness.mts`, run with `pay/run.sh`). It has 56 checks
+over a fixture couple in 2031-07/08: the dashboard link and the
+prefilled form, a payment dated in August settling July, balances, the
+projection and the partner's response with no account, saldo, category or
+real amount, editing and switching modes, refusals, the partner unable to
+edit or delete, the split bill and the 22-action manifest. Every real
+document is fingerprinted before and after. The auto-mode classifier blocked
+running it against the real database without the owner's approval. Until it
+runs, U9 is verified by specs, `tsc`, lint and build only.
+
+**The deploy checklist**, which is the owner's to run (step 3 appears
+done, see above):
 
 1. **Deploy.** Nothing in the data blocks it: U4 has run, and there is one
    database. The host needs `AUTH_SECRET`, `FIREBASE_SERVICE_ACCOUNT` and

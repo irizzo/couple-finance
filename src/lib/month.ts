@@ -80,6 +80,30 @@ export function shiftMonth(month: string, delta: number): string {
 }
 
 /**
+ * The months on offer around `anchor`, newest first: from `before` months
+ * before it to `after` months after it. `keep`, a month already chosen, is
+ * added when it falls outside the range, so editing an older record never
+ * silently drops its value from a select. A malformed `keep` is ignored.
+ */
+export function monthChoices(
+	anchor: string,
+	before: number,
+	after: number,
+	keep?: string,
+): string[] {
+	const months: string[] = [];
+	for (let delta = after; delta >= -before; delta -= 1) {
+		months.push(shiftMonth(anchor, delta));
+	}
+	if (isMonth(keep) && !months.includes(keep)) {
+		months.push(keep);
+		// ISO months sort lexicographically.
+		months.sort((a, b) => b.localeCompare(a));
+	}
+	return months;
+}
+
+/**
  * The inclusive ISO date range covering a month — exactly what
  * `listTransactions({from, to})` wants. Day 0 of the following month *is* the
  * last day of this one, which handles February and leap years for free.

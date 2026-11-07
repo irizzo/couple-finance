@@ -19,10 +19,12 @@ interface SharedTableProps {
 }
 
 /**
- * Both people's shared expenses, in the seven fields of `SharedTransaction`
- * and nothing more: the account, the saldo and the real amount never reach
- * this table. "Compartilhado" leads, the part of whoever did not pay, with the
- * total muted beside it. The viewer's own rows get Editar · Duplicar ·
+ * Both people's shared expenses and payments, in the fields of
+ * `SharedTransaction` and nothing more: the account, the saldo and the real
+ * amount never reach this table. "Compartilhado" leads, the part of whoever
+ * did not pay, with the total muted beside it. A payment shows "Pagamento"
+ * instead of its category, since it is not "for" one, and its own date, which
+ * may fall after this month. The viewer's own rows get Editar · Duplicar ·
  * Excluir, which come back here after saving. The partner's rows are
  * read-only, and get none.
  */
@@ -68,7 +70,13 @@ export function SharedTable({
 								<tr key={row.id}>
 									<td className={styles.date}>{formatDayMonth(row.date)}</td>
 									<td className={styles.description}>{row.description}</td>
-									<td className={styles.tag}>{row.categoryName}</td>
+									<td className={styles.tag}>
+										{row.kind === "payment" ? (
+											<span className={styles.paymentTag}>Pagamento</span>
+										) : (
+											row.categoryName
+										)}
+									</td>
 									<td className={styles.tag}>{own ? "Você" : partnerName}</td>
 									<td className={styles.numeric}>
 										<Money value={row.sharedAmount} />

@@ -24,6 +24,21 @@ function remainder(
 	return Number.isFinite(rest) && rest >= 0 ? String(round2(rest)) : null;
 }
 
+/** The `sharing` radio group: not shared, split, or a payment to the partner. */
+type SharingMode = "none" | "shared" | "payment";
+
+const SHARING_MODES: readonly string[] = ["none", "shared", "payment"];
+
+function sharingModeOf(values: {
+	shared: boolean;
+	settlement: boolean;
+}): SharingMode {
+	if (values.shared) {
+		return "shared";
+	}
+	return values.settlement ? "payment" : "none";
+}
+
 interface TransactionFormProps {
 	action: FormAction;
 	accounts: SelectOption[];
@@ -37,9 +52,11 @@ interface TransactionFormProps {
 	showSaldos: boolean;
 	/**
 	 * The partner's display name, or `null` before the partner has signed up.
-	 * The "Compartilhar com …" box is offered only when there is one.
+	 * The sharing radios are offered only when there is one.
 	 */
 	partnerName: string | null;
+	/** The months a payment may settle, for the "Referente a" select. */
+	settleMonths: SelectOption[];
 	initial: TransactionFormValues;
 	/** Present when editing; omitted when creating. */
 	transactionId?: string;
@@ -77,10 +94,16 @@ export interface TransactionFormValues {
 	/** `""` unless the transaction is a transfer. */
 	toAccountId: string;
 	toSaldoId: string;
-	/** The one non-string default: a checkbox's checked state. */
+	/**
+	 * The two non-string defaults. At most one is true; together they pick the
+	 * `sharing` radio: split with the partner, or a payment to them.
+	 */
 	shared: boolean;
+	settlement: boolean;
 	/** The partner's part; `""` unless the expense is shared. */
 	sharedAmount: string;
+	/** The acerto a payment counts toward, "YYYY-MM"; `""` unless a payment. */
+	settlesMonth: string;
 }
 
 /**
@@ -99,13 +122,15 @@ export interface TransactionFormValues {
  * does not belong to a saldo, so neither choice constrains the other. With
  * saldos off (`showSaldos`), there are no saldo selects at all.
  *
- * Only a despesa can be shared, so the "Compartilhar" box follows the `type`
- * state like the destination selects do, and appears only once there is a
- * partner to share with. The partner's part is rendered only while the box is
- * checked (a `sharing` state mirrors it), for the same reason as the
- * destination: hidden but present, its `required` would block an unshared
- * expense. It starts at total minus real and follows both, like `realAmount`
- * follows the total, until the user types in it.
+ * Only a despesa can be shared or be a payment, so the `sharing` radios
+ * ("Só minha" · "Dividir com …" · "Pagamento a …") follow the `type` state like
+ * the destination selects do, and appear only once there is a partner. The
+ * partner's part is rendered only while "Dividir" is picked, and the
+ * "Referente a" month only while "Pagamento" is (a `sharing` state mirrors the
+ * radios), for the same reason as the destination: hidden but present, their
+ * `required` would block the other modes. The part starts at total minus real
+ * and follows both, like `realAmount` follows the total, until the user types
+ * in it.
  */
 export function TransactionForm({
 	action,
@@ -114,6 +139,7 @@ export function TransactionForm({
 	categories,
 	showSaldos,
 	partnerName,
+	settleMonths,
 	initial,
 	transactionId,
 	returnTo,
@@ -130,25 +156,35 @@ export function TransactionForm({
 		initial.realAmount !== "" && initial.realAmount !== initial.totalAmount,
 	);
 
-	const value = (field: Exclude<keyof TransactionFormValues, "shared">) =>
-		state.values?.[field] ?? initial[field];
-	// After a refused submit the echo decides, since an unchecked box is simply
-	// absent from it; falling back to `initial` would re-check a box the user
-	// had just cleared.
-	const sharedDefault = state.values
-		? state.values.shared === "on"
-		: initial.shared;
+	const value = (
+		field: Exclude<keyof TransactionFormValues, "shared" | "settlement">,
+	) => state.values?.[field] ?? initial[field];
+	// After a refused submit the echo decides, since radios that were not
+	// rendered (a receita) are simply absent from it; falling back to `initial`
+	// would bring back a mode the user had just left.
+	const echoedSharing = state.values?.sharing;
+	let sharingDefault = sharingModeOf(initial);
+	if (state.values) {
+		sharingDefault =
+			echoedSharing !== undefined && SHARING_MODES.includes(echoedSharing)
+				? (echoedSharing as SharingMode)
+				: "none";
+	}
 	const fieldError = (field: string) => state.fieldErrors?.[field];
 
 	const shareRef = useRef<HTMLInputElement>(null);
 	// Set whenever the part's input appears: a value that is not total minus
 	// real was chosen on purpose, and typing in the amounts must not replace it.
 	const shareEdited = useRef(false);
-	const [sharing, setSharing] = useState(sharedDefault);
+	const [sharing, setSharing] = useState<SharingMode>(sharingDefault);
+
+	function selectSharing(event: React.ChangeEvent<HTMLInputElement>) {
+		setSharing(event.target.value as SharingMode);
+	}
 
 	/**
-	 * Runs when the part's input appears: the box was checked, or the type came
-	 * back to despesa. An empty field starts at total minus real.
+	 * Runs when the part's input appears: "Dividir" was picked, or the type came
+	 * back to despesa with it picked. An empty field starts at total minus real.
 	 */
 	const attachShare = useCallback((input: HTMLInputElement | null) => {
 		shareRef.current = input;
@@ -422,19 +458,54 @@ export function TransactionForm({
 
 			{expense && partnerName !== null && (
 				<div className={styles.share}>
-					<label className={styles.shareLabel} htmlFor="shared">
-						{/* Follows `sharing`, not the echo, so the box and the part stay
-						    in step when the type leaves despesa and comes back. */}
-						<input
-							defaultChecked={sharing}
-							id="shared"
-							name="shared"
-							onChange={(event) => setSharing(event.target.checked)}
-							type="checkbox"
-						/>
-						Compartilhar com {partnerName}
-					</label>
-					{sharing && (
+					{/* Each radio follows `sharing`, not the echo, so the radios and
+					    the field below stay in step when the type leaves despesa and
+					    comes back. */}
+					<fieldset className={styles.typeGroup}>
+						<legend className={styles.legend}>Compartilhamento</legend>
+						<div className={`${styles.radios} ${styles.wrap}`}>
+							<label className={styles.radio} htmlFor="sharing">
+								<input
+									defaultChecked={sharing === "none"}
+									id="sharing"
+									name="sharing"
+									onChange={selectSharing}
+									type="radio"
+									value="none"
+								/>
+								Só minha
+							</label>
+							<label className={styles.radio} htmlFor="sharing-shared">
+								<input
+									defaultChecked={sharing === "shared"}
+									id="sharing-shared"
+									name="sharing"
+									onChange={selectSharing}
+									type="radio"
+									value="shared"
+								/>
+								Dividir com {partnerName}
+							</label>
+							<label className={styles.radio} htmlFor="sharing-payment">
+								<input
+									defaultChecked={sharing === "payment"}
+									id="sharing-payment"
+									name="sharing"
+									onChange={selectSharing}
+									type="radio"
+									value="payment"
+								/>
+								Pagamento a {partnerName}
+							</label>
+						</div>
+					</fieldset>
+					{/* Only a forged form meets this one; no field below carries it. */}
+					{fieldError("settlement") && (
+						<p className={styles.error} role="alert">
+							{fieldError("settlement")}
+						</p>
+					)}
+					{sharing === "shared" && (
 						<div className={styles.shareAmount}>
 							<Field
 								error={fieldError("sharedAmount")}
@@ -458,13 +529,52 @@ export function TransactionForm({
 							</Field>
 						</div>
 					)}
-					<p className={styles.shareHelp}>
-						A parte de {partnerName} é o que {partnerName} deve a você por esta
-						despesa; começa em total menos real. {partnerName} verá a descrição,
-						a data, o valor total, essa parte, a categoria e quem pagou — não a
-						conta, o saldo nem o valor real. Só você pode editar ou excluir este
-						lançamento.
-					</p>
+					{sharing === "payment" && (
+						<div className={styles.settleMonth}>
+							<Field
+								error={fieldError("settlesMonth")}
+								label="Referente a"
+								name="settlesMonth"
+							>
+								<select
+									aria-invalid={Boolean(fieldError("settlesMonth"))}
+									defaultValue={value("settlesMonth")}
+									id="settlesMonth"
+									name="settlesMonth"
+									required={true}
+								>
+									<option value="">Selecione o mês…</option>
+									{settleMonths.map((option) => (
+										<option key={option.id} value={option.id}>
+											{option.label}
+										</option>
+									))}
+								</select>
+							</Field>
+						</div>
+					)}
+					{sharing === "none" && (
+						<p className={styles.shareHelp}>Só você vê esta despesa.</p>
+					)}
+					{sharing === "shared" && (
+						<p className={styles.shareHelp}>
+							A parte de {partnerName} é o que {partnerName} deve a você por
+							esta despesa; começa em total menos real. {partnerName} verá a
+							descrição, a data, o valor total, essa parte, a categoria e quem
+							pagou — não a conta, o saldo nem o valor real. Só você pode editar
+							ou excluir este lançamento.
+						</p>
+					)}
+					{sharing === "payment" && (
+						<p className={styles.shareHelp}>
+							Um pagamento a {partnerName} abate o que você deve no acerto do
+							mês escolhido em “Referente a”, mesmo que seja feito depois. Para
+							você, continua sendo uma despesa, em geral com o real igual ao
+							total. {partnerName} verá a descrição, a data, o valor e quem
+							pagou — não a conta, o saldo nem a categoria. Só você pode editar
+							ou excluir este lançamento.
+						</p>
+					)}
 				</div>
 			)}
 

@@ -163,6 +163,9 @@ export function TransactionsTable({
 										{txn.shared && (
 											<span className={styles.sharedTag}>Compartilhada</span>
 										)}
+										{txn.settlement && (
+											<span className={styles.sharedTag}>Acerto</span>
+										)}
 									</td>
 									<td className={styles.tag}>
 										<EndsCell

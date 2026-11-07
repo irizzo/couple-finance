@@ -4,6 +4,7 @@ import {
 	formatDayMonth,
 	formatMonthLabel,
 	monthBounds,
+	monthChoices,
 	resolveMonth,
 	shiftMonth,
 	today,
@@ -76,6 +77,42 @@ describe("shiftMonth", () => {
 
 	it("throws on a malformed month, which only a programming error can pass", () => {
 		expect(() => shiftMonth("2026-13", 1)).toThrow("Not an ISO month");
+	});
+});
+
+describe("monthChoices", () => {
+	it("runs from after the anchor back to before it, newest first", () => {
+		expect(monthChoices("2026-01", 2, 1)).toEqual([
+			"2026-02",
+			"2026-01",
+			"2025-12",
+			"2025-11",
+		]);
+	});
+
+	it("adds a kept month outside the range, in order", () => {
+		expect(monthChoices("2026-10", 1, 0, "2025-03")).toEqual([
+			"2026-10",
+			"2026-09",
+			"2025-03",
+		]);
+		expect(monthChoices("2026-10", 1, 0, "2027-01")).toEqual([
+			"2027-01",
+			"2026-10",
+			"2026-09",
+		]);
+	});
+
+	it("does not repeat a kept month inside the range", () => {
+		expect(monthChoices("2026-10", 1, 1, "2026-09")).toEqual([
+			"2026-11",
+			"2026-10",
+			"2026-09",
+		]);
+	});
+
+	it.each([[""], ["2026-13"], [undefined]])("ignores a kept %j", (keep) => {
+		expect(monthChoices("2026-10", 0, 0, keep)).toEqual(["2026-10"]);
 	});
 });
 

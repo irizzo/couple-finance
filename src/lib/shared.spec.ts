@@ -5,6 +5,8 @@ import {
 	filterShared,
 	ledgerHref,
 	ledgerPath,
+	paymentHref,
+	recordHref,
 	resolveReturnTo,
 	sharedCategoryOptions,
 	sharedDashboard,
@@ -30,6 +32,7 @@ function row(
 		sharedAmount: totalAmount / 2,
 		categoryName,
 		ownerId,
+		kind: "expense",
 		...fields,
 	};
 }
@@ -37,6 +40,24 @@ function row(
 /** A shared expense whose other person's part is `sharedAmount`. */
 function part(ownerId: string, totalAmount: number, sharedAmount: number) {
 	return row(ownerId, totalAmount, "Mercado", { sharedAmount });
+}
+
+/**
+ * A payment toward the acerto, as the projection builds it: the whole amount
+ * counts, and it is dated early next month by default.
+ */
+function payment(
+	ownerId: string,
+	totalAmount: number,
+	fields: Partial<SharedTransaction> = {},
+): SharedTransaction {
+	return row(ownerId, totalAmount, "Acerto", {
+		id: `${ownerId}-payment-${totalAmount}`,
+		date: "2026-11-05",
+		sharedAmount: totalAmount,
+		kind: "payment",
+		...fields,
+	});
 }
 
 describe("categoryKey", () => {
@@ -136,6 +157,8 @@ describe("sharedSummary", () => {
 				partner: { shared: 20, total: 40 },
 			},
 			count: 2,
+			payments: { viewer: 0, partner: 0 },
+			beforePayments: { debtorId: BIA, creditorId: ANA, amount: 30 },
 			settlement: { debtorId: BIA, creditorId: ANA, amount: 30 },
 		});
 	});
@@ -210,6 +233,8 @@ describe("sharedSummary", () => {
 				partner: { shared: 0, total: 0 },
 			},
 			count: 1,
+			payments: { viewer: 0, partner: 0 },
+			beforePayments: null,
 			settlement: null,
 		});
 	});
@@ -233,8 +258,140 @@ describe("sharedSummary", () => {
 				partner: { shared: 0, total: 0 },
 			},
 			count: 0,
+			payments: { viewer: 0, partner: 0 },
+			beforePayments: null,
 			settlement: null,
 		});
+	});
+});
+
+describe("sharedSummary with payments", () => {
+	// Ana's 40 of Bia's 80 against Bia's 10 of Ana's 20: Ana owes Bia 30.
+	const expenses = [row(BIA, 80), row(ANA, 20)];
+
+	it("lets the debtor's payment settle the month", () => {
+		const summary = sharedSummary([...expenses, payment(ANA, 30)], ANA, BIA);
+		expect(summary.payments).toEqual({ viewer: 30, partner: 0 });
+		expect(summary.beforePayments).toEqual({
+			debtorId: ANA,
+			creditorId: BIA,
+			amount: 30,
+		});
+		expect(summary.settlement).toBeNull();
+	});
+
+	it("reads the same from the creditor's side", () => {
+		const summary = sharedSummary([...expenses, payment(ANA, 30)], BIA, ANA);
+		expect(summary.payments).toEqual({ viewer: 0, partner: 30 });
+		expect(summary.beforePayments).toEqual({
+			debtorId: ANA,
+			creditorId: BIA,
+			amount: 30,
+		});
+		expect(summary.settlement).toBeNull();
+	});
+
+	it("leaves the rest of a partial payment owing", () => {
+		const summary = sharedSummary([...expenses, payment(ANA, 12.5)], ANA, BIA);
+		expect(summary.settlement).toEqual({
+			debtorId: ANA,
+			creditorId: BIA,
+			amount: 17.5,
+		});
+	});
+
+	it("adds up several payments", () => {
+		const summary = sharedSummary(
+			[...expenses, payment(ANA, 10.1), payment(ANA, 19.9, { id: "second" })],
+			ANA,
+			BIA,
+		);
+		expect(summary.payments.viewer).toBe(30);
+		expect(summary.settlement).toBeNull();
+	});
+
+	it("turns the settlement around on an overpayment", () => {
+		const summary = sharedSummary([...expenses, payment(ANA, 50)], ANA, BIA);
+		expect(summary.settlement).toEqual({
+			debtorId: BIA,
+			creditorId: ANA,
+			amount: 20,
+		});
+	});
+
+	it("nets the partner's payment against what the partner owes", () => {
+		// Bia owes Ana 30 here, and pays 30.
+		const rows = [row(ANA, 80), row(BIA, 20), payment(BIA, 30)];
+		const summary = sharedSummary(rows, ANA, BIA);
+		expect(summary.payments).toEqual({ viewer: 0, partner: 30 });
+		expect(summary.beforePayments?.debtorId).toBe(BIA);
+		expect(summary.settlement).toBeNull();
+	});
+
+	it("counts a payment with nothing owed as money owed back", () => {
+		const summary = sharedSummary([payment(ANA, 25)], ANA, BIA);
+		expect(summary.beforePayments).toBeNull();
+		expect(summary.settlement).toEqual({
+			debtorId: BIA,
+			creditorId: ANA,
+			amount: 25,
+		});
+	});
+
+	it("leaves payments out of the totals and the count", () => {
+		const summary = sharedSummary([...expenses, payment(ANA, 30)], ANA, BIA);
+		expect(summary.total).toEqual({ shared: 50, total: 100 });
+		expect(summary.paid).toEqual({
+			viewer: { shared: 10, total: 20 },
+			partner: { shared: 40, total: 80 },
+		});
+		expect(summary.count).toBe(2);
+	});
+
+	it("rounds the payments and the settlement", () => {
+		const summary = sharedSummary(
+			[part(BIA, 1, 0.3), payment(ANA, 0.1), payment(ANA, 0.2, { id: "b" })],
+			ANA,
+			BIA,
+		);
+		expect(summary.payments.viewer).toBe(0.3);
+		expect(summary.settlement).toBeNull();
+	});
+
+	it("leaves a third owner's payment out", () => {
+		const summary = sharedSummary([...expenses, payment("caio", 30)], ANA, BIA);
+		expect(summary.payments).toEqual({ viewer: 0, partner: 0 });
+		expect(summary.settlement?.amount).toBe(30);
+	});
+
+	it("has no settlement without a partner, payments or not", () => {
+		const summary = sharedSummary([payment(ANA, 30)], ANA, null);
+		expect(summary.payments.viewer).toBe(30);
+		expect(summary.settlement).toBeNull();
+	});
+});
+
+describe("payments and the filters", () => {
+	const rows = [
+		row(BIA, 80, "Mercado"),
+		row(ANA, 20, "Lazer"),
+		payment(ANA, 30),
+	];
+
+	it("offers no category for a payment", () => {
+		expect(sharedCategoryOptions(rows, ANA).map((o) => o.key)).toEqual([
+			"lazer",
+			"mercado",
+		]);
+	});
+
+	it("leaves payments out of a category filter, even one named like it", () => {
+		expect(filterShared(rows, { categoryKey: "mercado" })).toEqual([rows[0]]);
+		expect(filterShared(rows, { categoryKey: "acerto" })).toEqual([]);
+	});
+
+	it("keeps payments under the owner filter", () => {
+		expect(filterShared(rows, { ownerId: ANA })).toEqual([rows[1], rows[2]]);
 	});
 });
 
@@ -278,6 +435,29 @@ describe("sharedDashboard", () => {
 		]);
 	});
 
+	it("nets payments into the cards and lists them in the table", () => {
+		// Bia owes 22.50 here: half of 100, against half of 40 and of 15.
+		const view = sharedDashboard([...rows, payment(BIA, 22.5)], people, {});
+		expect(view.rows).toHaveLength(4);
+		expect(view.summary.settlement).toBeNull();
+		expect(view.paymentsHidden).toBe(false);
+	});
+
+	it("says when a category filter leaves payments out", () => {
+		const view = sharedDashboard([...rows, payment(BIA, 30)], people, {
+			categoryKey: "mercado",
+		});
+		expect(view.rows).toEqual([rows[0], rows[1]]);
+		expect(view.summary.payments).toEqual({ viewer: 0, partner: 0 });
+		expect(view.summary.settlement?.amount).toBe(30);
+		expect(view.paymentsHidden).toBe(true);
+	});
+
+	it("hides nothing under a category filter in a month without payments", () => {
+		const view = sharedDashboard(rows, people, { categoryKey: "mercado" });
+		expect(view.paymentsHidden).toBe(false);
+	});
+
 	it("keeps an option for a selected category the month does not have", () => {
 		const view = sharedDashboard(rows, people, { categoryKey: "farmacia" });
 		expect(view.rows).toEqual([]);
@@ -287,6 +467,37 @@ describe("sharedDashboard", () => {
 			"mercado",
 		]);
 		expect(view.categories[0].label).toBe("farmacia");
+	});
+});
+
+describe("recordHref", () => {
+	const paid = {
+		date: "2026-11-05",
+		settlement: true as const,
+		settlesMonth: "2026-10",
+	};
+
+	it("lands a payment on the acerto it settles, from the dashboard", () => {
+		expect(recordHref(paid, "shared")).toBe("/shared?month=2026-10");
+	});
+
+	it("lands a payment on the month of its date, from the ledger", () => {
+		expect(recordHref(paid, undefined)).toBe("/transactions?month=2026-11");
+		expect(recordHref(paid, "/shared")).toBe("/transactions?month=2026-11");
+	});
+
+	it("lands anything else on the month of its date", () => {
+		const expense = { date: "2026-11-05" };
+		expect(recordHref(expense, "shared")).toBe("/shared?month=2026-11");
+		expect(recordHref(expense, "")).toBe("/transactions?month=2026-11");
+	});
+});
+
+describe("paymentHref", () => {
+	it("opens the create form as a payment toward the month, back to /shared", () => {
+		expect(paymentHref(MONTH, 30.5)).toBe(
+			"/transactions/new?settles=2026-10&amount=30.5&returnTo=shared",
+		);
 	});
 });
 

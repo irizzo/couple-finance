@@ -6,18 +6,35 @@ import {
 	TransactionForm,
 	type TransactionFormValues,
 } from "@/components/TransactionForm";
-import { toOptions } from "@/components/transaction-options";
+import {
+	settleMonthOptions,
+	toOptions,
+} from "@/components/transaction-options";
 import { listAccounts } from "@/database/accounts.actions";
 import { listCategories } from "@/database/categories.actions";
 import { listSaldos } from "@/database/saldos.actions";
 import { getTransaction } from "@/database/transactions.actions";
 import { getPartnerName } from "@/database/users.actions";
-import { currentMonth, resolveMonth, today } from "@/lib/month";
+import { parseAmount } from "@/lib/money";
+import {
+	currentMonth,
+	formatMonthLabel,
+	isMonth,
+	resolveMonth,
+	today,
+} from "@/lib/month";
 import { ledgerHref, resolveReturnTo } from "@/lib/shared";
 import styles from "../../pages.module.css";
 
 interface NewTransactionPageProps {
-	searchParams: Promise<{ month?: string; from?: string; returnTo?: string }>;
+	searchParams: Promise<{
+		month?: string;
+		from?: string;
+		returnTo?: string;
+		/** From the Acerto card: open as a payment toward this month's acerto. */
+		settles?: string;
+		amount?: string;
+	}>;
 }
 
 const BLANK: TransactionFormValues = {
@@ -32,7 +49,9 @@ const BLANK: TransactionFormValues = {
 	toAccountId: "",
 	toSaldoId: "",
 	shared: false,
+	settlement: false,
 	sharedAmount: "",
+	settlesMonth: "",
 };
 
 export default async function NewTransactionPage({
@@ -43,12 +62,22 @@ export default async function NewTransactionPage({
 		month: requested,
 		from,
 		returnTo: requestedReturn,
+		settles: requestedSettles,
+		amount: requestedAmount,
 	} = await searchParams;
 	const month = resolveMonth(requested);
 	// Opened from the shared dashboard, the way back and the redirect after
 	// saving go there instead of to the ledger.
 	const returnTo = resolveReturnTo(requestedReturn);
-	const backHref = ledgerHref(month, returnTo);
+	// "Registrar pagamento" on the Acerto card names the month the payment
+	// settles, and the way back from it is that month's dashboard. A malformed
+	// value is ignored, like any hand-edited parameter.
+	const settles =
+		!from && isMonth(requestedSettles) ? requestedSettles : undefined;
+	const backHref = ledgerHref(
+		settles !== undefined && returnTo ? settles : month,
+		returnTo,
+	);
 	const backLabel = returnTo ? "Voltar ao compartilhado" : "Voltar ao extrato";
 
 	// Opening the form from a past or future month pre-dates it to that month's
@@ -67,9 +96,19 @@ export default async function NewTransactionPage({
 		from ? getTransaction(user, from) : Promise.resolve(null),
 	]);
 
+	// A payment needs the partner it is paid to: without one, the form has no
+	// sharing radios to carry it.
+	const paying = settles !== undefined && partner.ok && partner.data !== null;
+	let heading = "Novo lançamento";
+	if (from) {
+		heading = "Duplicar lançamento";
+	} else if (paying) {
+		heading = "Registrar pagamento";
+	}
+
 	const header = (
 		<div className={styles.header}>
-			<h1>{from ? "Duplicar lançamento" : "Novo lançamento"}</h1>
+			<h1>{heading}</h1>
 			<Link href={backHref}>{backLabel}</Link>
 		</div>
 	);
@@ -144,12 +183,28 @@ export default async function NewTransactionPage({
 					toAccountId: source.data.toAccountId ?? "",
 					toSaldoId: source.data.toSaldoId ?? "",
 					shared: source.data.shared === true,
+					settlement: source.data.settlement === true,
 					sharedAmount:
 						source.data.sharedAmount === undefined
 							? ""
 							: String(source.data.sharedAmount),
+					settlesMonth: source.data.settlesMonth ?? "",
 				}
 			: { ...BLANK, date: defaultDate };
+	// From the Acerto card: dated today (the link carries no `month`), for what
+	// is owed, as a despesa whose real share is all of it. Nothing is written
+	// until submit, so the amount can still be changed for a partial payment.
+	if (paying && settles !== undefined) {
+		const amount = parseAmount(requestedAmount ?? null);
+		const owed = Number.isFinite(amount) && amount > 0 ? String(amount) : "";
+		Object.assign(initial, {
+			description: `Acerto com ${partner.data} · ${formatMonthLabel(settles)}`,
+			totalAmount: owed,
+			realAmount: owed,
+			settlement: true,
+			settlesMonth: settles,
+		});
+	}
 
 	return (
 		<div className={styles.page}>
@@ -168,8 +223,9 @@ export default async function NewTransactionPage({
 				partnerName={partner.data}
 				returnTo={returnTo}
 				saldos={toOptions(saldos.data, "(arquivado)")}
+				settleMonths={settleMonthOptions(currentMonth(), initial.settlesMonth)}
 				showSaldos={user.useSaldos}
-				submitLabel="Salvar lançamento"
+				submitLabel={paying ? "Registrar pagamento" : "Salvar lançamento"}
 			/>
 		</div>
 	);

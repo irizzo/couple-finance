@@ -7,7 +7,7 @@ import { SharedSummaryCards } from "@/components/SharedSummaryCards";
 import { SharedTable } from "@/components/SharedTable";
 import { listSharedTransactions } from "@/database/transactions.actions";
 import { getPartnerName } from "@/database/users.actions";
-import { formatMonthLabel, monthBounds, resolveMonth } from "@/lib/month";
+import { formatMonthLabel, resolveMonth } from "@/lib/month";
 import { categoryKey, RETURN_TO_SHARED, sharedDashboard } from "@/lib/shared";
 import styles from "../pages.module.css";
 
@@ -24,18 +24,18 @@ function single(raw: Param): string | undefined {
 
 /**
  * Both people's shared expenses for one month: what each paid, each person's
- * part, and the settlement that nets the parts. Everything on it comes from
- * `listSharedTransactions`, the one read that crosses owners, so it can show
- * nothing beyond that projection.
+ * part, and the settlement that nets the parts and the payments toward this
+ * month's acerto. Everything on it comes from `listSharedTransactions`, the
+ * one read that crosses owners, so it can show nothing beyond that
+ * projection.
  */
 export default async function SharedPage({ searchParams }: SharedPageProps) {
 	const user = await requireUser();
 	const params = await searchParams;
 	const month = resolveMonth(params.month);
-	const { from, to } = monthBounds(month);
 
 	const [shared, partner] = await Promise.all([
-		listSharedTransactions(user, { from, to }),
+		listSharedTransactions(user, month),
 		getPartnerName(user),
 	]);
 
@@ -98,21 +98,37 @@ export default async function SharedPage({ searchParams }: SharedPageProps) {
 	const monthLabel = formatMonthLabel(month);
 	const emptyMessage =
 		shared.data.length === 0
-			? `Nenhuma despesa compartilhada em ${monthLabel}. Para compartilhar uma, marque “Compartilhar com ${partnerName}” ao lançar a despesa.`
+			? `Nenhuma despesa compartilhada em ${monthLabel}. Para compartilhar uma, escolha “Dividir com ${partnerName}” ao lançar a despesa.`
 			: `Nenhuma despesa compartilhada em ${monthLabel} com esses filtros.`;
 
 	return (
 		<div className={styles.page}>
 			{header}
 			<SharedSummaryCards
+				month={month}
+				offerPayment={selected.category === undefined}
 				partnerName={partnerName}
 				summary={view.summary}
 				viewerId={user.id}
 			/>
 			<p className={styles.lead}>
 				“Compartilhado” é a parte de quem não pagou. O acerto compara o que cada
-				um deve ao outro.
+				um deve ao outro e desconta os pagamentos referentes a{" "}
+				{monthLabel.toLowerCase()}, mesmo os feitos depois.
 			</p>
+			{view.summary.payments.partner > 0 && (
+				<p className={styles.lead}>
+					O pagamento de {partnerName} já conta no acerto, e você não precisa
+					registrá-lo aqui. Para acertar o saldo da sua conta, lance uma receita
+					com valor real 0.
+				</p>
+			)}
+			{view.paymentsHidden && (
+				<p className={styles.lead}>
+					Com uma categoria filtrada, os pagamentos ficam de fora dos cartões e
+					da tabela, porque não pertencem a uma categoria.
+				</p>
+			)}
 			{selected.owner && (
 				<p className={styles.lead}>
 					A tabela mostra só o que{" "}

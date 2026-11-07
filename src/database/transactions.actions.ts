@@ -5,6 +5,7 @@ import type {
 	DocumentReference,
 	DocumentSnapshot,
 	Transaction as FirestoreTransaction,
+	QueryDocumentSnapshot,
 } from "firebase-admin/firestore";
 import { COLLECTIONS, withId } from "@/database/collections";
 import db from "@/database/db";
@@ -16,17 +17,20 @@ import {
 	exceedsTotal,
 	type FieldErrors,
 	isoDate,
+	isoMonth,
 	nonEmptyString,
 	nonNegativeNumber,
 	optionalId,
 	round2,
 } from "@/database/validators";
+import { monthBounds } from "@/lib/month";
 import {
 	type Account,
 	type Category,
 	type CreateTransactionInput,
 	type Owner,
 	type Saldo,
+	type SharedKind,
 	type SharedTransaction,
 	type Transaction,
 	type TransactionFilters,
@@ -257,6 +261,17 @@ function validate(
 		...(input?.type === TransactionType.TRANSFER
 			? validateDestination(input, useSaldos)
 			: {}),
+		// A payment toward the acerto names the month it settles, and is never
+		// also a shared expense: it would count twice, once as a part and once
+		// as a payment. The form's radio group cannot send both.
+		...(storesSettlement(input)
+			? {
+					settlement: storesShare(input)
+						? "cannot be both shared and a payment"
+						: null,
+					settlesMonth: isoMonth(input.settlesMonth),
+				}
+			: {}),
 		// Only checked where it is stored. Like `realAmount`, it may not exceed
 		// the total, alone or together with `realAmount` (see `shareOverflows`).
 		...(storesShare(input)
@@ -280,12 +295,21 @@ function storesShare(input: CreateTransactionInput | undefined): boolean {
 }
 
 /**
+ * A payment toward the acerto is an expense, and the only document that stores
+ * `settlement` and `settlesMonth`.
+ */
+function storesSettlement(input: CreateTransactionInput | undefined): boolean {
+	return input?.type === TransactionType.EXPENSE && input.settlement === true;
+}
+
+/**
  * The document to store, field by field, so nothing else in `input` is ever
  * written. The owner comes from the argument, never from the input. `shared`
  * is always written, and is `true` only on an expense: as with a transfer's
  * destination, changing the type drops it, and with it `sharedAmount`, which
- * is stored only beside `shared: true`. A saldo is stored only when there is
- * one, never as `""`.
+ * is stored only beside `shared: true`. A payment's `settlement` and
+ * `settlesMonth` are stored only on an expense marked as one, and dropped the
+ * same way. A saldo is stored only when there is one, never as `""`.
  */
 function normalize(
 	input: CreateTransactionInput,
@@ -304,6 +328,11 @@ function normalize(
 	};
 	if (data.shared) {
 		data.sharedAmount = round2(input.sharedAmount as number);
+	}
+	// `validate` refuses a document that is both shared and a payment.
+	if (storesSettlement(input)) {
+		data.settlement = true;
+		data.settlesMonth = input.settlesMonth;
 	}
 	if (input.saldoId) {
 		data.saldoId = input.saldoId;
@@ -507,37 +536,34 @@ export async function listTransactions(
 }
 
 /**
- * The shared expenses of the viewer and of the viewer's partner, in a date
- * range, newest first: **the only read that crosses owners.**
+ * One month of the shared dashboard: the shared expenses of the viewer and of
+ * the viewer's partner dated in `month`, plus their payments toward that
+ * month's acerto, newest first. **The only read that crosses owners.**
  *
  * It returns the `SharedTransaction` projection, built field by field, even
  * for the viewer's own rows: never the account, the saldo or the real amount.
- * `sharedAmount` is in it on purpose: it is what the other person owes.
- * Whatever renders this cannot leak a field it was never given (the DTO
- * pattern from Next's authentication guide).
+ * `sharedAmount` is in it on purpose: it is what the other person owes, and on
+ * a payment the whole amount paid toward it. Whatever renders this cannot
+ * leak a field it was never given (the DTO pattern from Next's authentication
+ * guide).
  *
- * The same date-range query as `listTransactions`; the owners, `shared` and
- * the type are filtered in memory, for the same reason. The partner is the
- * viewer's stored `partnerId`, which only `createUser` writes, never anything
- * from a request. Category names come from each owner's own categories,
- * archived ones included, so a row never borrows the other person's name for
- * an id.
+ * Two queries, each on a single field so neither needs a composite index: the
+ * month's date range for shared expenses, as in `listTransactions`, and
+ * `settlesMonth ==` for payments (owner's decision, 2026-11-06), since a PIX
+ * on 05/04 may settle March. A payment is matched by `settlesMonth` only,
+ * never by its date. The owners, the flags and the type are filtered in
+ * memory. The partner is the viewer's stored `partnerId`, which only
+ * `createUser` writes, never anything from a request. Category names come
+ * from each owner's own categories, archived ones included, so a row never
+ * borrows the other person's name for an id.
  */
 export async function listSharedTransactions(
 	viewer: Viewer,
-	range: Pick<TransactionFilters, "from" | "to">,
+	month: string,
 ): Promise<ActionResult<SharedTransaction[]>> {
-	const fieldErrors = collect({
-		from: isoDate(range?.from),
-		to: isoDate(range?.to),
-	});
+	const fieldErrors = collect({ month: isoMonth(month) });
 	if (fieldErrors) {
-		return fail<SharedTransaction[]>("Invalid range", fieldErrors);
-	}
-	if (range.from > range.to) {
-		return fail<SharedTransaction[]>(
-			"The start date must not be after the end date",
-		);
+		return fail<SharedTransaction[]>("Invalid month", fieldErrors);
 	}
 	// A viewer without an id sees nothing, not even through a `partnerId`, as
 	// an owner without an id matches nothing in `owned`.
@@ -549,14 +575,16 @@ export async function listSharedTransactions(
 	const owners = isId(viewer.partnerId)
 		? [viewer.id, viewer.partnerId]
 		: [viewer.id];
+	const { from, to } = monthBounds(month);
 
 	try {
-		const [snap, ...categorySnaps] = await Promise.all([
+		const [expenseSnap, paymentSnap, ...categorySnaps] = await Promise.all([
 			ref(COLLECTIONS.transactions)
-				.where("date", ">=", range.from)
-				.where("date", "<=", range.to)
+				.where("date", ">=", from)
+				.where("date", "<=", to)
 				.orderBy("date", "desc")
 				.get(),
+			ref(COLLECTIONS.transactions).where("settlesMonth", "==", month).get(),
 			...owners.map((id) =>
 				ref(COLLECTIONS.categories).where("ownerId", "==", id).get(),
 			),
@@ -573,30 +601,50 @@ export async function listSharedTransactions(
 			]),
 		);
 
-		const rows = snap.docs
-			.filter(
-				(doc) =>
-					doc.get("shared") === true &&
-					doc.get("type") === TransactionType.EXPENSE &&
-					owners.includes(doc.get("ownerId")),
-			)
-			.map((doc): SharedTransaction => {
-				const ownerId: string = doc.get("ownerId");
-				return {
-					id: doc.id,
-					date: doc.get("date"),
-					description: doc.get("description"),
-					totalAmount: doc.get("totalAmount"),
-					// Every shared expense stores one; none was shared before the
-					// field existed (checked on 2026-11-03), so 0 meets only a
-					// document edited outside the app.
-					sharedAmount: doc.get("sharedAmount") ?? 0,
-					categoryName:
-						categoryNames.get(ownerId)?.get(doc.get("categoryId")) ??
-						"(removida)",
-					ownerId,
-				};
-			});
+		const ownersExpense = (doc: QueryDocumentSnapshot) =>
+			doc.get("type") === TransactionType.EXPENSE &&
+			owners.includes(doc.get("ownerId"));
+		const project = (
+			doc: QueryDocumentSnapshot,
+			kind: SharedKind,
+		): SharedTransaction => {
+			const ownerId: string = doc.get("ownerId");
+			const totalAmount: number = doc.get("totalAmount");
+			return {
+				id: doc.id,
+				date: doc.get("date"),
+				description: doc.get("description"),
+				totalAmount,
+				// Every shared expense stores a part; none was shared before the
+				// field existed (checked on 2026-11-03), so 0 meets only a
+				// document edited outside the app. A payment counts in full.
+				sharedAmount:
+					kind === "payment" ? totalAmount : (doc.get("sharedAmount") ?? 0),
+				// A payment is not "for" a category, and the form promises the
+				// partner will not see the one it was filed under.
+				categoryName:
+					kind === "payment"
+						? ""
+						: (categoryNames.get(ownerId)?.get(doc.get("categoryId")) ??
+							"(removida)"),
+				ownerId,
+				kind,
+			};
+		};
+
+		// A payment is never also shared, so one dated in this month but
+		// settling another is left out of the first list by its flag.
+		const expenses = expenseSnap.docs
+			.filter((doc) => doc.get("shared") === true && ownersExpense(doc))
+			.map((doc) => project(doc, "expense"));
+		const payments = paymentSnap.docs
+			.filter((doc) => doc.get("settlement") === true && ownersExpense(doc))
+			.map((doc) => project(doc, "payment"));
+		// Newest first, as the expenses already are. The sort is stable, so
+		// rows of one day keep their order.
+		const rows = [...expenses, ...payments].sort((a, b) =>
+			b.date.localeCompare(a.date),
+		);
 		return ok(rows);
 	} catch (cause) {
 		return failFrom<SharedTransaction[]>(

@@ -3,21 +3,23 @@ import { requireUser } from "@/app/_actions/session";
 import { updateTransactionForm } from "@/app/_actions/transactions";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { TransactionForm } from "@/components/TransactionForm";
-import { toOptions } from "@/components/transaction-options";
+import {
+	settleMonthOptions,
+	toOptions,
+} from "@/components/transaction-options";
 import { listAccounts } from "@/database/accounts.actions";
 import { listCategories } from "@/database/categories.actions";
 import { listSaldos } from "@/database/saldos.actions";
 import { getTransaction } from "@/database/transactions.actions";
 import { getPartnerName } from "@/database/users.actions";
-import { ledgerHref, ledgerPath, resolveReturnTo } from "@/lib/shared";
+import { currentMonth } from "@/lib/month";
+import { ledgerPath, recordHref, resolveReturnTo } from "@/lib/shared";
 import styles from "../../../pages.module.css";
 
 interface EditTransactionPageProps {
 	params: Promise<{ id: string }>;
 	searchParams: Promise<{ returnTo?: string }>;
 }
-
-const MONTH_LENGTH = 7;
 
 export default async function EditTransactionPage({
 	params,
@@ -77,7 +79,9 @@ export default async function EditTransactionPage({
 	}
 
 	const txn = existing.data;
-	const backHref = ledgerHref(txn.date.slice(0, MONTH_LENGTH), returnTo);
+	// The month the record lives in: on the dashboard, a payment lives in the
+	// acerto it settles.
+	const backHref = recordHref(txn, returnTo);
 
 	return (
 		<div className={styles.page}>
@@ -99,12 +103,15 @@ export default async function EditTransactionPage({
 					toAccountId: txn.toAccountId ?? "",
 					toSaldoId: txn.toSaldoId ?? "",
 					shared: txn.shared === true,
+					settlement: txn.settlement === true,
 					sharedAmount:
 						txn.sharedAmount === undefined ? "" : String(txn.sharedAmount),
+					settlesMonth: txn.settlesMonth ?? "",
 				}}
 				partnerName={partner.data}
 				returnTo={returnTo}
 				saldos={toOptions(saldos.data, "(arquivado)")}
+				settleMonths={settleMonthOptions(currentMonth(), txn.settlesMonth)}
 				showSaldos={user.useSaldos}
 				submitLabel="Salvar alterações"
 				transactionId={txn.id}

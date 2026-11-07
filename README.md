@@ -38,7 +38,7 @@ account, split 50/50, is stored as R$ 90 total and R$ 45 real.
   invite code and closes once two accounts exist. Accounts, saldos,
   categories, transactions and budgets belong to whoever created them, and
   the other person can neither see nor change them.
-- **Shared expenses.** Tick "Compartilhar com …" on an expense and set the
+- **Shared expenses.** Choose "Dividir com …" on an expense and set the
   other person's part: what they owe you for it. It starts at total minus
   real, and your real amount plus their part can't be more than the total.
   The other person sees the description, date, total, their part,
@@ -48,6 +48,13 @@ account, split 50/50, is stored as R$ 90 total and R$ 45 real.
   month, what each paid, and who owes whom. The table can be filtered by who
   paid and by category, and categories with the same name are merged. The
   cards always count both people.
+- **Paying what you owe.** When you send the other person money to settle a
+  month, record it as an expense with "Pagamento a …" and pick the month it
+  settles ("Referente a"). The dashboard's "Registrar pagamento" button opens
+  the form already filled in. The payment counts toward that month's
+  settlement even when you pay it later. For you it is an ordinary expense.
+  Only the person who pays records it. The person who receives it can log
+  an income with real amount 0 to correct their account balance.
 - **Profile** (Perfil). Change your name, your saldo mode and your password.
   Changing the password signs out your other sessions.
 
@@ -60,7 +67,8 @@ bill takes an account that started at R$ 1.000 to 910 (total) and 955 (real).
 
 A shared expense moves only the payer's balances. The other person's part
 moves no balance. It only feeds the dashboard's settlement, which nets what
-each person owes the other for the month in view.
+each person owes the other for the month in view, minus the payments
+recorded toward that month.
 
 Budgets compare the plan against **real** expense amounts only. Income never
 offsets a budget, and a transfer is not spending. The saldo and category
@@ -176,8 +184,8 @@ The order, when one person has signed up and the other has not:
 - Every read and write is checked on the server against the signed-in
   person. Someone else's record reads exactly like a missing one.
 - The shared dashboard receives only the shared fields listed above. A
-  shared expense's account, saldo and real amount never leave the server for
-  the other person.
+  shared expense's account, saldo and real amount, and a payment's category,
+  never leave the server for the other person.
 - Sign-in attempts are not rate-limited, so passwords need at least 12
   characters. A wrong password and an unknown username get the same message.
 - Passwords are stored as scrypt hashes, never in plain text.
